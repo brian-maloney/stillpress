@@ -169,18 +169,20 @@ final class ChangeListener {
 		global $wpdb;
 		$parents = array( $post_id );
 		$seen    = array( $post_id => true );
-		while ( $parents && count( $seen ) < 5000 ) {
-			$in       = implode( ', ', array_fill( 0, count( $parents ), '%d' ) );
-			$children = $wpdb->get_col(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.DirectDatabaseQuery -- $in holds placeholders only; must read the live tree.
-				$wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($in) AND post_status IN ('publish','inherit') AND post_type <> 'revision'", $parents )
-			);
-			$parents = array();
+		// Upper bound on descendants, so a huge tree can't stall a save.
+		$budget = 5000;
+		while ( $parents && $budget > 0 ) {
+			$in  = implode( ', ', array_fill( 0, count( $parents ), '%d' ) );
+			$sql = "SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($in) AND post_status IN ('publish','inherit') AND post_type <> 'revision'";
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery -- $in holds placeholders only; the live tree must be read.
+			$children = $wpdb->get_col( $wpdb->prepare( $sql, $parents ) );
+			$parents  = array();
 			foreach ( (array) $children as $child_id ) {
 				$child_id = (int) $child_id;
 				if ( isset( $seen[ $child_id ] ) ) {
 					continue;
 				}
+				--$budget;
 				$seen[ $child_id ] = true;
 				$parents[]         = $child_id;
 				$child             = get_post( $child_id );
