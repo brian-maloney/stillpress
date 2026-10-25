@@ -61,3 +61,16 @@ Tested before writing the renderer:
 - **Concurrent requests work**: four renders via `request_multiple` in about 0.03 s on this setup.
 - Unpinned and shortlink URLs (`/?p=1`, `/hello-world/`) come back as 301s to the canonical permalink. With `follow_redirects` off,
   the crawler records them as redirects.
+
+## D8. URL rewriting: absolute URLs only in Milestone 1
+
+Every encoded form of the origin (raw, JSON `\/`, JavaScript `/`, URL-encoded, HTML entities; with or without a scheme)
+is rewritten to the public base URL, spelled in the same encoding. Root-relative output is deferred: deciding where a
+relative URL is safe (it isn't in canonical links, Open Graph tags, feeds, sitemaps or share links) needs context the textual
+rewriter doesn't have. Absolute URLs work on any host once the public URL is set.
+
+When home is in a subdirectory (`https://origin/blog`), paths under it map to the public base path and paths outside it
+(`/wp-includes/…`) keep their path on the public host. When the public base has a path (`https://example.org/static`),
+files outside it can't be placed in the output root and are reported instead of written.
+
+Protocol-relative matches (`//host`) must not follow a URL character, so `https://elsewhere//origin/x` isn't touched.
