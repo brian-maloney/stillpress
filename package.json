@@ -15,7 +15,8 @@
     "lint:php:fix": "wp-env run cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpcbf",
     "test:unit": "wp-env run cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpunit",
     "test:integration": "wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpunit -c phpunit-integration.xml.dist",
-    "test:php": "npm run test:unit && npm run test:integration"
+    "test:php": "npm run test:unit && npm run test:integration",
+    "test:system": "wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress -- env STILLPRESS_SYSTEM_TESTS=1 vendor/bin/phpunit -c phpunit-system.xml.dist"
   },
   "engines": {
     "node": ">=20"

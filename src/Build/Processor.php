@@ -14,6 +14,7 @@ use Stillpress\Crawl\UrlClassifier;
 use Stillpress\Output\Cache;
 use Stillpress\Output\UnsafePathException;
 use Stillpress\Render\RenderResult;
+use Stillpress\Render\RenderToken;
 use Stillpress\Rewrite\OriginSet;
 use Stillpress\Rewrite\UrlRewriter;
 use Stillpress\Storage\UrlRepository;
@@ -177,6 +178,13 @@ final class Processor {
 		}
 
 		if ( 404 === $result->status || 410 === $result->status ) {
+			$this->remove( $row, $result->status );
+			return self::outcome( 'gone' );
+		}
+
+		$exclude = $result->recorded ? ( $result->headers[ strtolower( RenderToken::EXCLUDE_HEADER ) ] ?? '' ) : '';
+		if ( '' !== $exclude ) {
+			$this->logger->info( sprintf( 'Left out %s (%s).', $row['url'], $exclude ) );
 			$this->remove( $row, $result->status );
 			return self::outcome( 'gone' );
 		}

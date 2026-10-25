@@ -373,7 +373,36 @@ final class Recorder {
 
 		if ( ! headers_sent() ) {
 			header( RenderToken::RECORDED_HEADER . ': ' . $this->build_id . '.' . $this->url_id );
+			$exclude = self::exclusion_reason();
+			if ( '' !== $exclude ) {
+				header( RenderToken::EXCLUDE_HEADER . ': ' . $exclude );
+			}
 		}
+	}
+
+	/**
+	 * Decides whether the page just rendered must stay out of the static site.
+	 *
+	 * @return string Short reason, or "" to publish.
+	 */
+	private static function exclusion_reason(): string {
+		$reason = '';
+		if ( did_action( 'wp' ) && is_singular() && post_password_required( get_queried_object_id() ) ) {
+			$reason = 'password-protected';
+		}
+
+		/**
+		 * Filters whether the page rendered in this request is left out of the static site.
+		 *
+		 * Return a short reason (letters, digits and dashes) to exclude it, or an empty string to publish it.
+		 * Runs inside the render request, so conditional tags such as is_singular() work.
+		 *
+		 * @since 0.1.0
+		 *
+		 * @param string $reason Default "password-protected" for posts behind a password, otherwise "".
+		 */
+		$reason = (string) apply_filters( 'stillpress_exclude_render', $reason );
+		return (string) preg_replace( '/[^a-z0-9\-]/', '', strtolower( $reason ) );
 	}
 
 	/**

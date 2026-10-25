@@ -33,6 +33,13 @@ final class Plugin {
 	private $booted = false;
 
 	/**
+	 * Change listener.
+	 *
+	 * @var ChangeListener|null
+	 */
+	private $changes = null;
+
+	/**
 	 * Returns the shared instance.
 	 *
 	 * @return Plugin
@@ -60,7 +67,8 @@ final class Plugin {
 
 		Capabilities::register();
 		Queue::register();
-		( new ChangeListener() )->register();
+		$this->changes = new ChangeListener();
+		$this->changes->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'stillpress', Cli\Command::class );
@@ -68,6 +76,15 @@ final class Plugin {
 
 		add_action( 'init', array( Schema::class, 'maybe_upgrade' ), 1 );
 		add_action( 'wp_initialize_site', array( self::class, 'initialize_site' ), 20 );
+	}
+
+	/**
+	 * The change listener (to flush changes before the end of a long-running process, such as WP-CLI or tests).
+	 *
+	 * @return ChangeListener|null
+	 */
+	public function changes(): ?ChangeListener {
+		return $this->changes;
 	}
 
 	/**

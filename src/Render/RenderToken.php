@@ -21,6 +21,9 @@ final class RenderToken {
 	/** Response header name echoed by the recorder. */
 	const RECORDED_HEADER = 'X-Stillpress-Recorded';
 
+	/** Response header the recorder sends when the page must not be published. */
+	const EXCLUDE_HEADER = 'X-Stillpress-Exclude';
+
 	/** Option holding the HMAC key. */
 	const KEY_OPTION = 'stillpress_render_key';
 

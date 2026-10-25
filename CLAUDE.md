@@ -28,12 +28,17 @@ npm run env:start           # WordPress on http://localhost:8888 (admin/password
 npm run composer install    # PHP dependencies (Composer runs in the container)
 npm run test:unit           # PHPUnit unit suite (no WordPress loaded)
 npm run test:integration    # PHPUnit against the WordPress test suite (tests-cli container)
+npm run test:system         # Real builds over HTTP on the tests site (ERASES the :8889 site's content)
 npm run lint:php            # PHPCS: WordPress Coding Standards + PHPCompatibilityWP
 npm run lint:php:fix        # PHPCBF auto-fix
 npm run wp -- stillpress build --sync   # WP-CLI inside the dev site
 ```
 
-Run one test: `npm run test:unit -- --filter PathMapperTest`. Check the PHP floor and ceiling quickly with
+Run one test: `npm run test:unit -- --filter PathMapperTest`.
+
+System tests: `tests/system/IncrementalDifferentialTest.php` applies random edits and requires incremental output to equal
+a full build. `STILLPRESS_DIFF_ITERATIONS=500` for a long run; a failure prints `STILLPRESS_DIFF_SEED=<n>` to reproduce it.
+Pass env vars through wp-env with `npm run test:system -- ...` or `wp-env run tests-cli -- env VAR=1 vendor/bin/phpunit ...`. Check the PHP floor and ceiling quickly with
 `docker run --rm -v "$PWD":/app -w /app php:7.4-cli vendor/bin/phpunit` (and `php:8.5-cli`).
 
 ## Conventions

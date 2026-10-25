@@ -172,6 +172,11 @@ final class Runner {
 		$stats = $build['stats'];
 
 		if ( 'incremental' === $build['kind'] ) {
+			// Changes made earlier in this same process (WP-CLI, tests) are normally written at shutdown.
+			$listener = \Stillpress\Plugin::instance()->changes();
+			if ( null !== $listener ) {
+				$listener->flush();
+			}
 			$plan = ( new Invalidator() )->plan( (int) $build['id'] );
 			if ( $plan['full'] ) {
 				$logger->info( 'A change affects every page (theme, plugins or site settings); switching to a full build.' );
@@ -289,8 +294,9 @@ final class Runner {
 			$new_ids = array();
 			foreach ( $outcome['discovered'] as $found ) {
 				$existing = $this->urls->find( $found['url'] );
-				// Incremental builds only follow links to URLs that were never published before.
-				if ( 'full' !== $build['kind'] && null !== $existing && ( null !== $existing['content_hash'] || 0 !== $existing['status_code'] ) ) {
+				// Incremental builds only follow links to URLs that aren't published right now: new URLs, and URLs
+				// that were gone (404) or redirecting before, which the change may have brought back.
+				if ( 'full' !== $build['kind'] && null !== $existing && null !== $existing['content_hash'] ) {
 					continue;
 				}
 				$new_ids[] = null !== $existing ? $existing['id'] : $this->urls->ensure( $found['url'], 'crawl', $found['kind'] );
@@ -304,6 +310,10 @@ final class Runner {
 			}
 		}
 		$this->builds->merge_stats( $build_id, array( 'urls' => $frontier->counts() ) );
+
+		// The HTTP library leaves reference cycles (transport <-> hooks) holding whole response bodies. PHP only
+		// collects cycles when its root buffer fills, which a long build can outrun, so collect after each batch.
+		gc_collect_cycles();
 		return true;
 	}
 

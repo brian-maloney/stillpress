@@ -92,7 +92,9 @@ test a precise target: after any edits, an incremental build must produce exactl
 
 ## D11. Incremental builds follow only links to new URLs
 
-While re-rendering affected pages, an incremental build queues a discovered link only if that URL was never published or
-fetched before. That's how a new tag archive or a newly uploaded image gets picked up without re-crawling the site. Assets
+While re-rendering affected pages, an incremental build queues a discovered link only if that URL isn't published right
+now. That's how a new tag archive or a newly uploaded image gets picked up without re-crawling the site. URLs that returned
+404 or redirected before count as unpublished: the differential test found that a deleted post can push `/page/4/` to a
+404 and a later new post can bring it back, and only re-checking such links catches that. Assets
 whose files change in place keep their URL and are refreshed by the next full build. Theme and plugin updates trigger a full
 build anyway (`upgrader_process_complete`).

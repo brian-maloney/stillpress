@@ -9,3 +9,4 @@
 /phpunit.xml.dist export-ignore
 /phpunit-integration.xml.dist export-ignore
 /CLAUDE.md export-ignore
+/phpunit-system.xml.dist export-ignore
