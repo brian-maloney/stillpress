@@ -33,7 +33,8 @@ npm run lint:php:fix        # PHPCBF auto-fix
 npm run wp -- stillpress build --sync   # WP-CLI inside the dev site
 ```
 
-Run one test: `npm run test:unit -- --filter PathMapperTest`.
+Run one test: `npm run test:unit -- --filter PathMapperTest`. Check the PHP floor and ceiling quickly with
+`docker run --rm -v "$PWD":/app -w /app php:7.4-cli vendor/bin/phpunit` (and `php:8.5-cli`).
 
 ## Conventions
 

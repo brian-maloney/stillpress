@@ -39,3 +39,25 @@ wp-env 12 deprecates its built-in tests environment in favor of separate config 
 
 PHPUnit 9.6 is the newest line that runs on PHP 7.4 and is supported by the WordPress test suite. The container also
 ships PHPUnit 10; we always run the Composer-installed `vendor/bin/phpunit` so results don't depend on the image.
+
+## D7. Loopback spike results (WordPress 7.1.3, PHP 8.3, wp-env)
+
+Tested before writing the renderer:
+
+- **The site often can't reach its own public URL.** From the wp-env CLI container, `http://localhost:8888` fails with
+  "connection refused", because the port is published on the host, not inside the container. The web container can reach
+  it. WP-CLI builds therefore need the connect-to pin. `CURLOPT_CONNECT_TO` (`localhost:8888:wordpress:8888`) keeps the URL,
+  Host header and TLS SNI unchanged while changing where the socket connects. We use it rather than `CURLOPT_RESOLVE`,
+  because it can change the port too.
+- **The pin must be attached in two places.** `wp_remote_request` goes through `WP_Http`, which fires the `http_api_curl`
+  action. `WpOrg\Requests\Requests::request_multiple` (used for concurrent renders) bypasses `WP_Http`, so the pin goes in
+  a Requests `curl.before_request` hook. That hook fires for single and multi handles alike; `curl.before_send` doesn't
+  fire for multi requests.
+- **The render header round trip works**: a request header reaches the render, which can send back a response header.
+- **`pre_option` captures every option read**, including `_transient_*` and `_site_transient_*` rows and Action Scheduler
+  internals. Those must be filtered out as dependency triggers. The home page of Twenty Twenty-Five read about 80 options.
+- **`the_posts` catches block-theme database objects** (here a `wp_navigation` post), so menus, synced patterns and
+  customized templates become post dependencies without special handling.
+- **Concurrent requests work**: four renders via `request_multiple` in about 0.03 s on this setup.
+- Unpinned and shortlink URLs (`/?p=1`, `/hello-world/`) come back as 301s to the canonical permalink. With `follow_redirects` off,
+  the crawler records them as redirects.
