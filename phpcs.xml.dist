@@ -3,6 +3,8 @@
 	<description>WordPress Coding Standards for Stillpress.</description>
 
 	<file>./stillpress.php</file>
+	<file>./uninstall.php</file>
+	<file>./bin/hooks.php</file>
 	<file>./src</file>
 	<file>./tests</file>
 

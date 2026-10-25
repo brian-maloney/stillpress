@@ -39,6 +39,8 @@ UI, REST and CLI are thin adapters over one service layer, so everything the UI 
   If that header is missing, a page cache answered the request instead of WordPress. The URL is then marked `deps=unknown`
   (always rebuilt on any change) and Site Health warns.
 - Response checks: status, content-type, size cap (default 20 MB), `logged-in` body class (must not appear), redirect target.
+- The recorder can also mark a page as excluded with `X-Stillpress-Exclude` (password-protected posts by default, or
+  anything the `stillpress_exclude_render` filter decides); excluded pages are removed like 404s.
 
 ## URL rewriting
 - `OriginSet` holds every form of the origin: `home_url` and `site_url`, http and https, protocol-relative `//host`,
@@ -77,6 +79,11 @@ UI, REST and CLI are thin adapters over one service layer, so everything the UI 
 | `query:<sig>` | `the_posts` with `WP_Query` vars normalized into a signature (post_type, status, tax/author/date filters, order, limits) | a changed post matching the signature **before or after** the change |
 
 - Nav menus, global styles, templates, template parts and synced patterns are posts or terms, so the table covers them.
+- Posts are captured mainly through `posts_pre_query`, which fires even with `suppress_filters` (so `get_posts()` and
+  menus are seen): the recorder keeps each `WP_Query` and reads its results and query vars at shutdown.
+- Hierarchical changes: before a page or term changes, its descendants are snapshotted too, because their addresses
+  contain the ancestor's slug. If the permalink structure embeds `%category%` (or another taxonomy) or `%author%`, renaming
+  that term or author is a full change.
   Widgets and theme mods are options.
 - Some options change constantly (cron, transients, `doing_cron`, Action Scheduler state, our own). They're denylisted
   as triggers (filterable). `rewrite_rules`, `permalink_structure` and the active theme trigger a full rebuild.
@@ -101,7 +108,11 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 - A build is a state machine (`queued → discovering → rendering → finalizing → deploying → done|failed|cancelled`).
   Each AS action handles a batch within a time budget (default 20 s, kept under `max_execution_time`) and then
   schedules the next one. Batches can resume after a crash, and a lock prevents two builds running at once.
-- WP-CLI can run the same pipeline synchronously in-process (`--sync`), with no time budget.
+- WP-CLI can run the same pipeline synchronously in-process (`--sync`).
+- Starting a build from the admin or REST also sends a signed, non-blocking request to `admin-ajax.php`
+  (`stillpress_run`) that runs the first slice right away and chains the next, so a build starts within a second rather
+  than at the next cron tick. Action Scheduler remains the fallback; `run_slice()` reports done, more or busy, and a busy
+  slice reschedules itself 30 seconds later.
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through

@@ -47,6 +47,8 @@ jobs:
         run: npm run lint:php
       - run: npm run test:unit
       - run: npm run test:integration
+      - if: ${{ matrix.multisite }}
+        run: npm run test:integration:multisite
 
   system:
     name: System tests (real builds over HTTP)

@@ -69,6 +69,20 @@ final class AdminActionsTest extends \WP_UnitTestCase {
 		$this->assertNull( ( new BuildRepository() )->active() );
 	}
 
+	public function test_forged_background_kick_is_refused(): void {
+		$build          = ( new \Stillpress\Build\BuildService() )->start( 'full', 'manual', 0, false, array( 'sync' => true ) );
+		$_POST['build'] = (string) $build;
+		$_POST['token'] = str_repeat( 'a', 64 );
+		try {
+			\Stillpress\Build\Queue::handle_kick();
+			$this->fail( 'A forged kick must be refused.' );
+		} catch ( \WPDieException $e ) {
+			$this->assertSame( 'queued', ( new BuildRepository() )->get( $build )['status'], 'No work may run.' );
+		} finally {
+			unset( $_POST['build'], $_POST['token'] );
+		}
+	}
+
 	public function test_settings_form_keeps_paths_for_users_who_cannot_edit_them(): void {
 		Settings::update( array( 'local_path' => '/srv/static-site' ) );
 		$editor = self::factory()->user->create_and_get( array( 'role' => 'editor' ) );
@@ -84,7 +98,11 @@ final class AdminActionsTest extends \WP_UnitTestCase {
 	}
 
 	public function test_settings_form_rejects_dangerous_folder(): void {
-		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		if ( is_multisite() ) {
+			grant_super_admin( $admin );
+		}
+		wp_set_current_user( $admin );
 		Settings::update( array( 'local_path' => '/srv/static-site' ) );
 		$_POST['option_page'] = SettingsPage::GROUP;
 		$clean                = SettingsPage::sanitize( array( 'local_path' => WP_CONTENT_DIR ) );
