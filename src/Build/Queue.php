@@ -23,6 +23,9 @@ final class Queue {
 	const SCHEDULED_HOOK = 'stillpress_scheduled_rebuild';
 	const WATCHDOG_HOOK  = 'stillpress_watchdog';
 
+	/** admin-ajax action that runs a slice right away. */
+	const KICK_ACTION = 'stillpress_run';
+
 	/** Seconds after the last change before an automatic incremental build starts. */
 	const DEBOUNCE = 60;
 
@@ -39,6 +42,8 @@ final class Queue {
 		add_action( 'stillpress_changes_recorded', array( self::class, 'changes_recorded' ), 10, 0 );
 		add_action( 'stillpress_build_finished', array( self::class, 'build_finished' ), 10, 1 );
 		add_action( 'action_scheduler_init', array( self::class, 'ensure_recurring' ) );
+		add_action( 'wp_ajax_' . self::KICK_ACTION, array( self::class, 'handle_kick' ) );
+		add_action( 'wp_ajax_nopriv_' . self::KICK_ACTION, array( self::class, 'handle_kick' ) );
 	}
 
 	/**
@@ -77,10 +82,96 @@ final class Queue {
 		 * @param float $budget Seconds. Defaults to 20, or a third of max_execution_time when that is lower.
 		 */
 		$budget = (float) apply_filters( 'stillpress_slice_budget', self::default_budget() );
-		if ( ( new Runner() )->run_slice( (int) $build_id, $budget ) ) {
-			// The action that is running right now still counts as pending, so bypass the uniqueness check.
-			as_enqueue_async_action( self::SLICE_HOOK, array( (int) $build_id ), self::GROUP, false );
+		self::after_slice( (int) $build_id, ( new Runner() )->run_slice( (int) $build_id, $budget ) );
+	}
+
+	/**
+	 * Schedules what comes after a slice.
+	 *
+	 * @param int    $build_id Build ID.
+	 * @param string $result   Runner::DONE, MORE or BUSY.
+	 * @return void
+	 */
+	private static function after_slice( int $build_id, string $result ): void {
+		if ( ! self::ready() ) {
+			return;
 		}
+		if ( Runner::MORE === $result ) {
+			// The action running right now still counts as pending, so bypass the uniqueness check.
+			as_enqueue_async_action( self::SLICE_HOOK, array( $build_id ), self::GROUP, false );
+			self::kick( $build_id );
+		} elseif ( Runner::BUSY === $result && ! as_has_scheduled_action( self::SLICE_HOOK, array( $build_id ), self::GROUP ) ) {
+			// Another process holds the build; check back later instead of spinning.
+			as_schedule_single_action( time() + 30, self::SLICE_HOOK, array( $build_id ), self::GROUP, true );
+		}
+	}
+
+	/**
+	 * Starts a slice immediately with a non-blocking request to the site itself, so a build begins within a second
+	 * of clicking Publish instead of waiting for the next cron tick. Action Scheduler remains the fallback.
+	 *
+	 * @param int $build_id Build ID.
+	 * @return void
+	 */
+	public static function kick( int $build_id ): void {
+		/**
+		 * Filters whether builds are started with an immediate loopback request.
+		 *
+		 * @since 0.1.0
+		 *
+		 * @param bool $kick Default true. Return false to rely on Action Scheduler and WP-Cron only.
+		 */
+		if ( ! apply_filters( 'stillpress_kick_builds', true ) ) {
+			return;
+		}
+		$pipeline = Pipeline::for_site();
+		$pipeline->client->dispatch(
+			admin_url( 'admin-ajax.php' ),
+			array(
+				'action' => self::KICK_ACTION,
+				'build'  => (string) $build_id,
+				'token'  => self::kick_token( $build_id ),
+			)
+		);
+	}
+
+	/**
+	 * Signature authorizing one kick for a build. It only allows running a slice of an active build.
+	 *
+	 * @param int $build_id Build ID.
+	 * @return string
+	 */
+	private static function kick_token( int $build_id ): string {
+		$key = (string) get_option( \Stillpress\Render\RenderToken::KEY_OPTION );
+		if ( strlen( $key ) < 64 ) {
+			\Stillpress\Render\RenderToken::for_site();
+			$key = (string) get_option( \Stillpress\Render\RenderToken::KEY_OPTION );
+		}
+		return hash_hmac( 'sha256', 'kick:' . $build_id, $key );
+	}
+
+	/**
+	 * admin-ajax handler for kicks.
+	 *
+	 * @return void
+	 */
+	public static function handle_kick(): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- Authenticated by an HMAC instead of a nonce: the request comes from the server itself, without cookies.
+		$build_id = isset( $_POST['build'] ) ? absint( $_POST['build'] ) : 0;
+		$token    = isset( $_POST['token'] ) ? sanitize_text_field( wp_unslash( $_POST['token'] ) ) : '';
+		// phpcs:enable
+		if ( $build_id <= 0 || ! hash_equals( self::kick_token( $build_id ), $token ) || ! ( new BuildRepository() )->is_active( $build_id ) ) {
+			wp_die( '', '', array( 'response' => 403 ) );
+		}
+		ignore_user_abort( true );
+		if ( function_exists( 'set_time_limit' ) ) {
+			set_time_limit( 120 ); // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Long-running background slice.
+		}
+
+		/** This filter is documented in src/Build/Queue.php */
+		$budget = (float) apply_filters( 'stillpress_slice_budget', self::default_budget() );
+		self::after_slice( $build_id, ( new Runner() )->run_slice( $build_id, $budget ) );
+		wp_die( '', '', array( 'response' => 204 ) );
 	}
 
 	/**

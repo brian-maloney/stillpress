@@ -109,6 +109,52 @@ final class LoopbackClient {
 	}
 
 	/**
+	 * Sends a fire-and-forget POST to the site itself (used to start background work right away).
+	 *
+	 * @param string               $url  Origin URL.
+	 * @param array<string,string> $body Form fields.
+	 * @return bool False when the URL is refused or the request couldn't be sent.
+	 */
+	public function dispatch( string $url, array $body ): bool {
+		$url = $this->policy->normalize( $url );
+		if ( null === $url ) {
+			return false;
+		}
+		$hooks   = new Hooks();
+		$pin     = $this->pin_option(
+			array(
+				array(
+					'url'     => $url,
+					'headers' => array(),
+				),
+			)
+		);
+		$options = array(
+			'blocking'        => false,
+			'timeout'         => 1,
+			'connect_timeout' => 1,
+			'hooks'           => $hooks,
+			/** This filter is documented in wp-includes/class-wp-http-streams.php */
+			'verify'          => apply_filters( 'https_local_ssl_verify', false, '' ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core filter for loopback TLS verification.
+		);
+		if ( null !== $pin ) {
+			$hooks->register(
+				'curl.before_request',
+				static function ( &$handle ) use ( $pin ) {
+					curl_setopt( $handle, CURLOPT_CONNECT_TO, $pin ); // phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_setopt -- See fetch_chunk().
+				}
+			);
+			$options['transport'] = Curl::class;
+		}
+		try {
+			Requests::request( $url, array(), $body, Requests::POST, $options );
+		} catch ( RequestsException $e ) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
 	 * Fetches one batch in parallel.
 	 *
 	 * @param array<int|string,array{url:string,headers:array<string,string>}> $chunk Requests.

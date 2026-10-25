@@ -15,6 +15,10 @@ if ( ! file_exists( $stillpress_tests_dir . '/includes/functions.php' ) ) {
 	exit( 1 );
 }
 
+// wp-env's test config shares the tests site's database and, by default, its "wp_" table prefix, so installing the
+// test suite would wipe the site that system tests run against. Use a separate prefix.
+putenv( 'WORDPRESS_TABLE_PREFIX=wptests_' );
+
 define( 'WP_TESTS_PHPUNIT_POLYFILLS_PATH', dirname( __DIR__, 2 ) . '/vendor/yoast/phpunit-polyfills' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Defined by the WP test suite.
 
 require_once $stillpress_tests_dir . '/includes/functions.php';

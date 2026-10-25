@@ -178,6 +178,93 @@ final class ChangeListenerTest extends \WP_UnitTestCase {
 		$this->assertArrayHasKey( "comment:{$comment}", $changes );
 	}
 
+	public function test_moving_a_page_records_descendants_old_and_new_urls(): void {
+		$this->set_permalink_structure( '/%postname%/' );
+		$a     = self::factory()->post->create(
+			array(
+				'post_type' => 'page',
+				'post_name' => 'a',
+			)
+		);
+		$b     = self::factory()->post->create(
+			array(
+				'post_type' => 'page',
+				'post_name' => 'b',
+			)
+		);
+		$child = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_name'   => 'child',
+				'post_parent' => $a,
+			)
+		);
+		$grand = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_name'   => 'grand',
+				'post_parent' => $child,
+			)
+		);
+		$this->changes();
+		$old = get_permalink( $grand );
+
+		wp_update_post(
+			array(
+				'ID'          => $child,
+				'post_parent' => $b,
+			)
+		);
+		$changes = $this->changes();
+
+		$this->assertArrayHasKey( "post:{$grand}", $changes );
+		$this->assertContains( $old, $changes[ "post:{$grand}" ]['urls'] );
+		$this->assertContains( get_permalink( $grand ), $changes[ "post:{$grand}" ]['urls'] );
+	}
+
+	public function test_renaming_a_parent_category_records_child_archives(): void {
+		$this->set_permalink_structure( '/%postname%/' );
+		create_initial_taxonomies();
+		$parent = self::factory()->category->create( array( 'slug' => 'parent' ) );
+		$child  = self::factory()->category->create(
+			array(
+				'slug'   => 'child',
+				'parent' => $parent,
+			)
+		);
+		$this->changes();
+		$old = get_term_link( $child );
+		$this->assertStringContainsString( '/parent/child/', $old );
+		wp_update_term( $parent, 'category', array( 'slug' => 'renamed' ) );
+		$changes = $this->changes();
+		$this->assertContains( $old, $changes[ "term:{$child}" ]['urls'] );
+		$this->assertContains( get_term_link( $child ), $changes[ "term:{$child}" ]['urls'] );
+		$this->assertArrayNotHasKey( "full:term-in-permalinks:{$parent}", $changes );
+	}
+
+	public function test_category_in_permalinks_makes_slug_change_global(): void {
+		$this->set_permalink_structure( '/%category%/%postname%/' );
+		create_initial_taxonomies();
+		$cat = self::factory()->category->create( array( 'slug' => 'topic' ) );
+		$this->changes();
+		wp_update_term( $cat, 'category', array( 'slug' => 'subject' ) );
+		$changes = $this->changes();
+		$this->assertArrayHasKey( "full:term-in-permalinks:{$cat}", $changes, wp_json_encode( $changes ) );
+	}
+
+	public function test_author_in_permalinks_makes_nicename_change_global(): void {
+		$this->set_permalink_structure( '/%author%/%postname%/' );
+		$user = self::factory()->user->create( array( 'user_nicename' => 'before' ) );
+		$this->changes();
+		wp_update_user(
+			array(
+				'ID'            => $user,
+				'user_nicename' => 'after',
+			)
+		);
+		$this->assertArrayHasKey( "full:author-in-permalinks:{$user}", $this->changes() );
+	}
+
 	public function test_muted_requests_record_nothing(): void {
 		add_filter( 'stillpress_mute_changes', '__return_true' );
 		self::factory()->post->create();

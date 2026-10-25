@@ -81,6 +81,7 @@ final class BuildService {
 
 		if ( empty( $options['sync'] ) ) {
 			Queue::enqueue_slice( $id );
+			Queue::kick( $id );
 		}
 		return $id;
 	}
@@ -94,7 +95,14 @@ final class BuildService {
 	 */
 	public function run_sync( int $build_id, ?callable $progress = null ): ?array {
 		$runner = new Runner();
-		while ( $runner->run_slice( $build_id, 5.0 ) ) {
+		while ( true ) {
+			$result = $runner->run_slice( $build_id, 5.0 );
+			if ( Runner::DONE === $result ) {
+				break;
+			}
+			if ( Runner::BUSY === $result ) {
+				usleep( 500000 ); // A background slice is working on it; wait for it.
+			}
 			if ( null !== $progress ) {
 				$progress( $this->builds->get( $build_id ) );
 			}

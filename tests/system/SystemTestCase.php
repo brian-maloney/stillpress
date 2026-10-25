@@ -94,6 +94,7 @@ abstract class SystemTestCase extends TestCase {
 		Fs::rmrf( Paths::cache_dir() );
 		Fs::rmrf( $this->target );
 
+		delete_option( Settings::OPTION );
 		Settings::update(
 			array(
 				'public_url'   => self::PUBLIC_URL,

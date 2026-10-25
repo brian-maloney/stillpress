@@ -154,7 +154,41 @@ final class ChangeListener {
 			return;
 		}
 		$this->posts[ $post_id ] = self::post_snapshot( $post );
+		$this->snapshot_descendants( $post_id );
 		$this->schedule_flush();
+	}
+
+	/**
+	 * Captures the current state of a post's descendants (child pages, attachments). Their permalinks contain the
+	 * ancestor's slug, so moving or renaming the ancestor changes their addresses too.
+	 *
+	 * @param int $post_id Ancestor ID.
+	 * @return void
+	 */
+	private function snapshot_descendants( int $post_id ): void {
+		global $wpdb;
+		$parents = array( $post_id );
+		$seen    = array( $post_id => true );
+		while ( $parents && count( $seen ) < 5000 ) {
+			$in       = implode( ', ', array_fill( 0, count( $parents ), '%d' ) );
+			$children = $wpdb->get_col(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.DirectDatabaseQuery -- $in holds placeholders only; must read the live tree.
+				$wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($in) AND post_status IN ('publish','inherit') AND post_type <> 'revision'", $parents )
+			);
+			$parents = array();
+			foreach ( (array) $children as $child_id ) {
+				$child_id = (int) $child_id;
+				if ( isset( $seen[ $child_id ] ) ) {
+					continue;
+				}
+				$seen[ $child_id ] = true;
+				$parents[]         = $child_id;
+				$child             = get_post( $child_id );
+				if ( $child instanceof \WP_Post && ! array_key_exists( $child_id, $this->posts ) ) {
+					$this->posts[ $child_id ] = self::post_snapshot( $child );
+				}
+			}
+		}
 	}
 
 	/**
@@ -296,6 +330,13 @@ final class ChangeListener {
 	 */
 	public function before_term( $term_id, $taxonomy ): void {
 		$this->note_term( (int) $term_id, (string) $taxonomy );
+		// Child term archives contain the parent's slug in their address.
+		if ( is_taxonomy_hierarchical( (string) $taxonomy ) ) {
+			$children = get_term_children( (int) $term_id, (string) $taxonomy );
+			foreach ( is_array( $children ) ? $children : array() as $child_id ) {
+				$this->note_term( (int) $child_id, (string) $taxonomy );
+			}
+		}
 	}
 
 	/**
@@ -492,6 +533,7 @@ final class ChangeListener {
 			++$written;
 		}
 
+		$structure = (string) get_option( 'permalink_structure' );
 		foreach ( $this->terms as $term_id => $info ) {
 			$link = get_term_link( $term_id, $info['taxonomy'] );
 			if ( is_string( $link ) ) {
@@ -500,12 +542,20 @@ final class ChangeListener {
 			$info['urls'] = array_values( array_unique( $info['urls'] ) );
 			$repo->record( 'term', (string) $term_id, $info );
 			++$written;
+			if ( count( $info['urls'] ) > 1 && $this->term_change_moves_posts( $structure, (string) $info['taxonomy'], (int) $term_id ) ) {
+				$repo->record( 'full', 'term-in-permalinks:' . $term_id );
+			}
 		}
 
 		foreach ( $this->users as $user_id => $urls ) {
 			$urls[] = get_author_posts_url( $user_id );
-			$repo->record( 'user', (string) $user_id, array( 'urls' => array_values( array_unique( $urls ) ) ) );
+			$urls   = array_values( array_unique( $urls ) );
+			$repo->record( 'user', (string) $user_id, array( 'urls' => $urls ) );
 			++$written;
+			if ( count( $urls ) > 1 && false !== strpos( $structure, '%author%' ) ) {
+				// The author's slug is part of every post address.
+				$repo->record( 'full', 'author-in-permalinks:' . $user_id );
+			}
 		}
 
 		foreach ( array_keys( $this->options ) as $name ) {
@@ -537,6 +587,32 @@ final class ChangeListener {
 			do_action( 'stillpress_changes_recorded', $written );
 		}
 		return $written;
+	}
+
+	/**
+	 * Does a term's address change also move posts? True when the permalink structure embeds the taxonomy.
+	 *
+	 * @param string $structure Permalink structure.
+	 * @param string $taxonomy  Taxonomy.
+	 * @param int    $term_id   Term ID.
+	 * @return bool
+	 */
+	private function term_change_moves_posts( string $structure, string $taxonomy, int $term_id ): bool {
+		$moves = ( 'category' === $taxonomy && false !== strpos( $structure, '%category%' ) )
+			|| false !== strpos( $structure, '%' . $taxonomy . '%' );
+
+		/**
+		 * Filters whether a change to a term's address also changes post addresses (forcing a full build).
+		 *
+		 * Custom post types whose rewrite rules contain a taxonomy can return true here.
+		 *
+		 * @since 0.1.0
+		 *
+		 * @param bool   $moves    Default: the permalink structure contains the taxonomy tag.
+		 * @param string $taxonomy Taxonomy.
+		 * @param int    $term_id  Term ID.
+		 */
+		return (bool) apply_filters( 'stillpress_term_change_moves_posts', $moves, $taxonomy, $term_id );
 	}
 
 	/**

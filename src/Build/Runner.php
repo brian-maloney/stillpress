@@ -31,6 +31,15 @@ use Stillpress\Support\Logger;
  */
 final class Runner {
 
+	/** The build finished, failed or was cancelled. */
+	const DONE = 'done';
+
+	/** The slice ran out of time; more work remains. */
+	const MORE = 'more';
+
+	/** Another slice holds the lock; try again shortly. */
+	const BUSY = 'busy';
+
 	/**
 	 * Builds.
 	 *
@@ -58,22 +67,22 @@ final class Runner {
 	 *
 	 * @param int   $build_id Build ID.
 	 * @param float $budget   Seconds to work before yielding (0 = until done).
-	 * @return bool True when the build needs another slice.
+	 * @return string self::DONE, self::MORE or self::BUSY.
 	 */
-	public function run_slice( int $build_id, float $budget ): bool {
+	public function run_slice( int $build_id, float $budget ): string {
 		$lock = new Lock();
 		if ( ! $lock->acquire( (int) max( 120, $budget * 3 ) ) ) {
-			return true; // Another slice is running; try again later.
+			return self::BUSY;
 		}
 		try {
-			return $this->work( $build_id, $budget );
+			return $this->work( $build_id, $budget ) ? self::MORE : self::DONE;
 		} catch ( \Throwable $e ) {
 			$logger = new Logger( $build_id );
 			$logger->error( 'Build failed: ' . $e->getMessage() );
 			$this->builds->update( $build_id, array( 'error' => substr( \Stillpress\Security\Redactor::scrub( $e->getMessage() ), 0, 1000 ) ) );
 			$this->builds->transition( $build_id, 'running', 'failed' );
 			$this->finished( $build_id );
-			return false;
+			return self::DONE;
 		} finally {
 			$lock->release();
 		}
