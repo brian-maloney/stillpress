@@ -53,6 +53,9 @@
 	<rule ref="WordPress.WP.EnqueuedResources">
 		<exclude-pattern>/tests/*</exclude-pattern>
 	</rule>
+	<rule ref="WordPress.DB.DirectDatabaseQuery">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
 	<rule ref="Squiz.Commenting">
 		<exclude-pattern>/tests/*</exclude-pattern>
 	</rule>
