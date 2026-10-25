@@ -453,6 +453,93 @@ final class Command {
 	}
 
 	/**
+	 * Manages deploy credentials. Values are never printed.
+	 *
+	 * Each secret can also come from a wp-config.php constant or an environment variable named
+	 * STILLPRESS_<DEPLOYER>_<FIELD>, which takes precedence over a stored value.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <action>
+	 * : list, set or delete.
+	 * ---
+	 * options:
+	 *   - list
+	 *   - set
+	 *   - delete
+	 * ---
+	 *
+	 * [<deployer>]
+	 * : Deployer ID, for example sftp.
+	 *
+	 * [<field>]
+	 * : Field name, for example password.
+	 *
+	 * [--format=<format>]
+	 * : Output format for list.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Prompts for the value without echoing it.
+	 *     $ wp stillpress secret set sftp password
+	 *
+	 *     # Reads the value from standard input.
+	 *     $ printf %s "$TOKEN" | wp stillpress secret set netlify token
+	 *
+	 *     $ wp stillpress secret list
+	 *     $ wp stillpress secret delete sftp password
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function secret( $args, $assoc ): void {
+		$action = $args[0] ?? 'list';
+		if ( 'list' === $action ) {
+			$rows = array();
+			foreach ( \Stillpress\Security\Secrets::stored_slots() as $slot ) {
+				$rows[] = array(
+					'deployer' => $slot['deployer'],
+					'field'    => $slot['field'],
+					'source'   => \Stillpress\Security\Secrets::source( $slot['deployer'], $slot['field'] ),
+					'name'     => \Stillpress\Security\Secrets::name( $slot['deployer'], $slot['field'] ),
+				);
+			}
+			WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'deployer', 'field', 'source', 'name' ) );
+			return;
+		}
+		$deployer = (string) ( $args[1] ?? '' );
+		$field    = (string) ( $args[2] ?? '' );
+		try {
+			if ( 'delete' === $action ) {
+				\Stillpress\Security\Secrets::delete( $deployer, $field );
+				WP_CLI::success( sprintf( 'Deleted the stored %s %s.', $deployer, $field ) );
+				return;
+			}
+			$name = \Stillpress\Security\Secrets::name( $deployer, $field );
+			if ( stream_isatty( STDIN ) ) {
+				$value = (string) \cli\prompt( sprintf( 'Value for %s', $name ), false, ': ', true );
+			} else {
+				$value = (string) stream_get_contents( STDIN );
+				// Trailing newlines come from `echo` and here-docs, never from a credential.
+				$value = rtrim( $value, "\r\n" );
+			}
+			if ( '' === $value ) {
+				WP_CLI::error( 'No value given. Use "secret delete" to remove a secret.' );
+			}
+			\Stillpress\Security\Secrets::set( $deployer, $field, $value );
+		} catch ( \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+		} catch ( \LogicException $e ) {
+			WP_CLI::error( $e->getMessage() );
+		}//end try
+		WP_CLI::success( sprintf( 'Stored %s %s (encrypted).', $deployer, $field ) );
+	}
+
+	/**
 	 * Checks that this site can be published (the same checks as Site Health).
 	 *
 	 * @return void

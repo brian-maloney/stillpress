@@ -11,6 +11,7 @@ use Stillpress\Build\Pipeline;
 use Stillpress\Build\Queue;
 use Stillpress\Deploy\Registry;
 use Stillpress\Render\LoopbackClient;
+use Stillpress\Security\Secrets;
 use Stillpress\Storage\Schema;
 use Stillpress\Support\Paths;
 use Stillpress\Support\Settings;
@@ -35,6 +36,7 @@ final class HealthChecks {
 			'cache'      => $this->cache(),
 			'page_cache' => $this->page_cache(),
 			'queue'      => $this->queue(),
+			'secrets'    => $this->secrets(),
 		);
 	}
 
@@ -174,6 +176,33 @@ final class HealthChecks {
 			'status'      => 'good',
 			'label'       => __( 'Background publishing is running', 'stillpress' ),
 			'description' => __( 'Scheduled and automatic builds run on time.', 'stillpress' ),
+		);
+	}
+
+	/**
+	 * Stored deploy credentials still decrypt.
+	 *
+	 * @return array<string,string>
+	 */
+	public function secrets(): array {
+		$lost = array();
+		foreach ( Secrets::stored_slots() as $slot ) {
+			if ( Secrets::SOURCE_UNREADABLE === Secrets::source( $slot['deployer'], $slot['field'] ) ) {
+				$lost[] = $slot['deployer'] . ' ' . $slot['field'];
+			}
+		}
+		if ( $lost ) {
+			return array(
+				'status'      => 'critical',
+				'label'       => __( 'Saved deploy credentials can no longer be read', 'stillpress' ),
+				/* translators: %s: comma-separated list of deploy target fields. */
+				'description' => sprintf( __( 'Saved credentials are encrypted with the security keys in wp-config.php, and those keys have changed. Enter these again: %s.', 'stillpress' ), implode( ', ', $lost ) ),
+			);
+		}
+		return array(
+			'status'      => 'good',
+			'label'       => __( 'Saved deploy credentials are readable', 'stillpress' ),
+			'description' => __( 'Credentials saved in the database decrypt with this site\'s security keys.', 'stillpress' ),
 		);
 	}
 

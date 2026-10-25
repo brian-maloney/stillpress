@@ -42,6 +42,18 @@ final class MultisiteTest extends \WP_UnitTestCase {
 		$this->assertNull( ( new UrlRepository() )->find( 'https://site-two.test/' ), 'Rows must not leak between sites.' );
 	}
 
+	public function test_secret_copied_to_another_site_does_not_open(): void {
+		\Stillpress\Security\Secrets::set( 'sftp', 'password', 'site-one-password' );
+		$sealed = get_option( \Stillpress\Security\Secrets::OPTION );
+		$site   = self::factory()->blog->create();
+		switch_to_blog( $site );
+		$this->assertNull( \Stillpress\Security\Secrets::get( 'sftp', 'password' ), 'Each site has its own secrets.' );
+		update_option( \Stillpress\Security\Secrets::OPTION, $sealed, false );
+		$this->assertNull( \Stillpress\Security\Secrets::get( 'sftp', 'password' ), 'A copied ciphertext is bound to its site.' );
+		restore_current_blog();
+		$this->assertSame( 'site-one-password', \Stillpress\Security\Secrets::get( 'sftp', 'password' ) );
+	}
+
 	public function test_site_admins_cannot_change_server_paths(): void {
 		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		get_userdata( $admin )->add_cap( Capabilities::MANAGE );

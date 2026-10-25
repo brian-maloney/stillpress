@@ -98,6 +98,7 @@ abstract class SystemTestCase extends TestCase {
 		Fs::rmrf( $this->target );
 
 		delete_option( Settings::OPTION );
+		delete_option( \Stillpress\Security\Secrets::OPTION );
 		Settings::update(
 			array(
 				'public_url'   => self::PUBLIC_URL,

@@ -12,23 +12,28 @@ final class CliTest extends SystemTestCase {
 	/**
 	 * Runs `wp stillpress ...` and returns [exit code, stdout, stderr].
 	 *
-	 * @param string $args Arguments after "wp stillpress".
+	 * @param string      $args  Arguments after "wp stillpress".
+	 * @param string|null $stdin Text to pipe to the command; null leaves standard input inherited.
 	 * @return array{0:int,1:string,2:string}
 	 */
-	private function wp( string $args ): array {
+	private function wp( string $args, ?string $stdin = null ): array {
 		$cmd   = 'wp --path=' . escapeshellarg( ABSPATH ) . ' stillpress ' . $args;
 		$pipes = array();
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Test harness for CLI commands.
-		$proc = proc_open(
-			$cmd,
-			array(
-				1 => array( 'pipe', 'w' ),
-				2 => array( 'pipe', 'w' ),
-			),
-			$pipes
+		$spec  = array(
+			1 => array( 'pipe', 'w' ),
+			2 => array( 'pipe', 'w' ),
 		);
-		$out  = (string) stream_get_contents( $pipes[1] );
-		$err  = (string) stream_get_contents( $pipes[2] );
+		if ( null !== $stdin ) {
+			$spec[0] = array( 'pipe', 'r' );
+		}
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Test harness for CLI commands.
+		$proc = proc_open( $cmd, $spec, $pipes );
+		if ( null !== $stdin ) {
+			fwrite( $pipes[0], $stdin );
+			fclose( $pipes[0] );
+		}
+		$out = (string) stream_get_contents( $pipes[1] );
+		$err = (string) stream_get_contents( $pipes[2] );
 		fclose( $pipes[1] );
 		fclose( $pipes[2] );
 		$code = proc_close( $proc );
@@ -138,5 +143,29 @@ final class CliTest extends SystemTestCase {
 		list( , $out ) = $this->wp( 'urls list --format=count' );
 		$this->assertSame( '0', trim( $out ) );
 		$this->assertFileExists( $this->target . '/index.html', 'clean must not touch the deployed site.' );
+	}
+
+	public function test_secret_set_list_delete_never_prints_the_value(): void {
+		list( $code, $out, $err ) = $this->wp( 'secret set testdep token', "tok-cli-0a1b2c3d\n" );
+		$this->assertSame( 0, $code, $out . $err );
+		wp_cache_delete( \Stillpress\Security\Secrets::OPTION, 'options' );
+		$this->assertSame( 'tok-cli-0a1b2c3d', \Stillpress\Security\Secrets::get( 'testdep', 'token' ), 'The trailing newline is dropped.' );
+
+		list( $code, $out, $err ) = $this->wp( 'secret list --format=json' );
+		$this->assertSame( 0, $code );
+		$this->assertStringNotContainsString( 'tok-cli-', $out . $err );
+		$rows = json_decode( $out, true );
+		$this->assertSame( 'stored', $rows[0]['source'] );
+		$this->assertSame( 'STILLPRESS_TESTDEP_TOKEN', $rows[0]['name'] );
+
+		list( $code ) = $this->wp( 'secret set testdep token', '' );
+		$this->assertNotSame( 0, $code, 'An empty value is refused.' );
+		list( $code ) = $this->wp( 'secret set Bad-Name token', 'x' );
+		$this->assertNotSame( 0, $code );
+
+		list( $code ) = $this->wp( 'secret delete testdep token' );
+		$this->assertSame( 0, $code );
+		list( , $out ) = $this->wp( 'secret list --format=count' );
+		$this->assertSame( '0', trim( $out ) );
 	}
 }

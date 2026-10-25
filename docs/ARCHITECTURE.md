@@ -121,10 +121,14 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   manifest, and requires a marker file `.stillpress-target` in the target directory.
 - ZIP is built from the cache and downloaded through an authenticated, nonce-checked admin endpoint (streamed). There's no public URL for it.
 
-## Secrets (designed now, used from M2)
-Lookup order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable → option encrypted with sodium `secretbox`, keyed by
-HKDF over the wp-config salts. If the salts are rotated, stored secrets are lost; the UI says so. Secret fields are write-only in
-forms and never appear in REST/CLI output, logs or exports. A `Redactor` scrubs known secret values from every log line.
+## Secrets
+`Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of
+the same name → the `stillpress_secrets` option (autoload off), sealed by `Security\SecretBox` with sodium `secretbox`. Each slot's
+key is HKDF-SHA256 over `wp_salt('auth') . wp_salt('secure_auth')` with the site ID, deployer and field as context, so a
+ciphertext copied into another slot or site doesn't open. If the salts are rotated, stored secrets become unreadable;
+`source()` reports `unreadable` and Site Health names the fields to re-enter. Secret fields are write-only in forms and never
+appear in REST/CLI output, logs or exports. Every value `Secrets` returns is registered with the `Redactor`, which scrubs it
+from every log line. `wp stillpress secret list|set|delete` manages stored values; `set` reads from standard input or a hidden prompt.
 
 ## WordPress-native UX
 - A top-level menu **Static Site**, with a *Publish* page (status, Publish / Full rebuild, history, log, changeset preview) and a
@@ -139,7 +143,7 @@ forms and never appear in REST/CLI output, logs or exports. A `Redactor` scrubs 
 - Activation defaults: target = Local directory at `wp-content/stillpress/public/<site>/`, public URL = current home URL. The one
   onboarding choice: *where to deploy*.
 - WP-CLI: `wp stillpress build [--full] [--url=…] [--sync] [--no-deploy]`, `status`, `cancel`, `deploy [--target]`, `zip [--out]`,
-  `urls list|add|remove`, `why <url>` (shows recorded deps), `changes list|flush`, `settings get|set|list`, `doctor` (Site Health checks), `clean`.
+  `urls list|add|remove`, `why <url>` (shows recorded deps), `changes list|flush`, `settings get|set|list`, `secret list|set|delete`, `doctor` (Site Health checks), `clean`.
 - Extension API: every pipeline stage has actions/filters (`stillpress_seed_urls`, `stillpress_pre_render`, `stillpress_rendered_response`,
   `stillpress_rewrite_rules`, `stillpress_output_path`, `stillpress_changeset`, `stillpress_register_deployers`,
   `stillpress_build_completed`, …). They're documented in `docs/HOOKS.md`, and a test fails if any `do_action`/`apply_filters` lacks a docblock.

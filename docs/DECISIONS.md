@@ -98,3 +98,15 @@ now. That's how a new tag archive or a newly uploaded image gets picked up witho
 404 and a later new post can bring it back, and only re-checking such links catches that. Assets
 whose files change in place keep their URL and are refreshed by the next full build. Theme and plugin updates trigger a full
 build anyway (`upgrader_process_complete`).
+
+## D12. Secrets are keyed from the wp-config salts, per site and slot
+
+Stored deploy credentials are sealed with sodium `secretbox` under a key derived by HKDF-SHA256 from
+`wp_salt('auth') . wp_salt('secure_auth')`. The salts are the only per-install secret that lives outside the database,
+so a leaked database dump alone doesn't reveal credentials. `wp_salt()` (rather than reading the constants) also covers
+installs whose wp-config.php still has the sample phrases, where core generates salts into the database; there the
+protection against a dump is weaker, which matches what core's own cookies get. The HKDF context is
+`<blog_id>|<deployer>|<field>`: secretbox has no associated data, and binding the key to the slot stops anyone who can
+write options from moving a ciphertext into a field whose value is shown or sent elsewhere. Rotating the salts loses stored
+secrets on purpose; Site Health and `secret list` say which ones to enter again. Constants and environment variables
+always win, so hosts that inject credentials never store them at all.
