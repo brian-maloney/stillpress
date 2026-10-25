@@ -43,8 +43,11 @@ final class Command {
 	 * [--sync]
 	 * : Run the build in this process and wait for it to finish.
 	 *
-	 * [--no-deploy]
-	 * : Update the build cache but don't deploy.
+	 * [--[no-]deploy]
+	 * : Deploy when the build finishes. Use --no-deploy to only update the build cache.
+	 * ---
+	 * default: true
+	 * ---
 	 *
 	 * [--target=<id>]
 	 * : Deploy to this target instead of the configured one (local, zip, or a registered deployer).
@@ -218,6 +221,336 @@ final class Command {
 			}
 		}
 		WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $items, array( 'type', 'key' ) );
+	}
+
+	/**
+	 * Deploys the current build cache without rebuilding.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--target=<id>]
+	 * : Deploy target (local, zip, or a registered deployer). Defaults to the configured one.
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function deploy( $args, $assoc ): void {
+		$target   = (string) ( $assoc['target'] ?? \Stillpress\Support\Settings::get( 'target' ) );
+		$deployer = \Stillpress\Deploy\Registry::instance()->get( $target );
+		if ( null === $deployer ) {
+			WP_CLI::error( sprintf( 'Unknown target "%s". Known: %s', $target, implode( ', ', array_keys( \Stillpress\Deploy\Registry::instance()->all() ) ) ) );
+		}
+		$problem = $deployer->problem();
+		if ( null !== $problem ) {
+			WP_CLI::error( $problem );
+		}
+		$manifest = iterator_to_array( ( new UrlRepository() )->published_files() );
+		if ( ! $manifest ) {
+			WP_CLI::error( 'Nothing has been built yet. Run "wp stillpress build" first.' );
+		}
+		$result = $deployer->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
+		WP_CLI::success( sprintf( 'Deployed to %s: %d added, %d changed, %d deleted, %d unchanged.%s', $deployer->label(), $result->added, $result->modified, $result->deleted, $result->unchanged, '' === $result->location ? '' : ' ' . $result->location ) );
+	}
+
+	/**
+	 * Writes the current build as a ZIP file.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--out=<file>]
+	 * : Copy the archive to this path.
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function zip( $args, $assoc ): void {
+		$manifest = iterator_to_array( ( new UrlRepository() )->published_files() );
+		if ( ! $manifest ) {
+			WP_CLI::error( 'Nothing has been built yet. Run "wp stillpress build --no-deploy" first.' );
+		}
+		$result = ( new \Stillpress\Deploy\Zip() )->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
+		$file   = $result->location;
+		if ( ! empty( $assoc['out'] ) ) {
+			if ( ! copy( $file, (string) $assoc['out'] ) ) {
+				WP_CLI::error( 'Could not write ' . $assoc['out'] );
+			}
+			$file = (string) $assoc['out'];
+		}
+		WP_CLI::success( sprintf( 'Wrote %d files to %s', $result->added, $file ) );
+	}
+
+	/**
+	 * Lists known URLs, or manages the extra URLs the crawler always visits.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <action>
+	 * : list, add or remove.
+	 * ---
+	 * options:
+	 *   - list
+	 *   - add
+	 *   - remove
+	 * ---
+	 *
+	 * [<url>...]
+	 * : For add/remove: URLs or paths.
+	 *
+	 * [--status=<status>]
+	 * : For list: published, error or all.
+	 * ---
+	 * default: published
+	 * ---
+	 *
+	 * [--search=<text>]
+	 * : For list: only URLs containing this text.
+	 *
+	 * [--format=<format>]
+	 * : Output format.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - json
+	 *   - csv
+	 *   - count
+	 * ---
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function urls( $args, $assoc ): void {
+		$action = array_shift( $args );
+		if ( 'list' === $action ) {
+			$rows = ( new UrlRepository() )->list(
+				array(
+					'status' => $assoc['status'] ?? 'published',
+					'search' => $assoc['search'] ?? '',
+					'limit'  => 1000,
+				)
+			);
+			WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'url', 'kind', 'status_code', 'path', 'deps_state', 'error' ) );
+			return;
+		}
+		$extra = (array) \Stillpress\Support\Settings::get( 'additional_urls' );
+		$extra = 'add' === $action ? array_merge( $extra, $args ) : array_values( array_diff( $extra, $args ) );
+		$saved = \Stillpress\Support\Settings::update( array( 'additional_urls' => $extra ) );
+		WP_CLI::success( sprintf( '%d extra URLs configured.', count( $saved['additional_urls'] ) ) );
+	}
+
+	/**
+	 * Shows or discards content changes waiting for the next incremental build.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <action>
+	 * : list or flush.
+	 * ---
+	 * options:
+	 *   - list
+	 *   - flush
+	 * ---
+	 *
+	 * [--format=<format>]
+	 * : Output format for list.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function changes( $args, $assoc ): void {
+		$repo = new \Stillpress\Storage\ChangeRepository();
+		if ( 'flush' === ( $args[0] ?? '' ) ) {
+			WP_CLI::success( sprintf( 'Discarded %d pending changes.', $repo->flush() ) );
+			return;
+		}
+		WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $repo->pending( 1000 ), array( 'id', 'object_type', 'object_key', 'created_at' ) );
+	}
+
+	/**
+	 * Reads or changes settings.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <action>
+	 * : list, get or set.
+	 * ---
+	 * options:
+	 *   - list
+	 *   - get
+	 *   - set
+	 * ---
+	 *
+	 * [<key>]
+	 * : Setting name.
+	 *
+	 * [<value>]
+	 * : New value. Lists (additional_urls, exclude, redirects) take one entry per line or a JSON array.
+	 *
+	 * [--format=<format>]
+	 * : Output format for list.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     $ wp stillpress settings set public_url https://www.example.org
+	 *     $ wp stillpress settings set target zip
+	 *     $ wp stillpress settings get full_rebuild
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function settings( $args, $assoc ): void {
+		$action   = $args[0] ?? 'list';
+		$settings = \Stillpress\Support\Settings::all();
+		if ( 'list' === $action ) {
+			$rows = array();
+			foreach ( $settings as $key => $value ) {
+				$rows[] = array(
+					'key'    => $key,
+					'value'  => is_scalar( $value ) ? var_export( $value, true ) : wp_json_encode( $value ), // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_var_export -- Display formatting.
+					'pinned' => \Stillpress\Support\Settings::is_pinned( $key ) ? 'wp-config.php' : '',
+				);
+			}
+			WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'key', 'value', 'pinned' ) );
+			return;
+		}
+		$key = (string) ( $args[1] ?? '' );
+		if ( ! array_key_exists( $key, \Stillpress\Support\Settings::defaults() ) ) {
+			WP_CLI::error( sprintf( 'Unknown setting "%s". Known: %s', $key, implode( ', ', array_keys( \Stillpress\Support\Settings::defaults() ) ) ) );
+		}
+		if ( 'get' === $action ) {
+			$value = $settings[ $key ];
+			WP_CLI::log( is_scalar( $value ) ? (string) var_export( $value, true ) : (string) wp_json_encode( $value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_var_export -- Display formatting.
+			return;
+		}
+		if ( \Stillpress\Support\Settings::is_pinned( $key ) ) {
+			WP_CLI::error( sprintf( '%s is set in wp-config.php (%s).', $key, \Stillpress\Support\Settings::CONSTANTS[ $key ] ) );
+		}
+		$raw     = (string) ( $args[2] ?? '' );
+		$decoded = json_decode( $raw, true );
+		$value   = is_array( $decoded ) ? $decoded : $raw;
+		if ( is_bool( \Stillpress\Support\Settings::defaults()[ $key ] ) ) {
+			$value = in_array( strtolower( $raw ), array( '1', 'true', 'yes', 'on' ), true );
+		}
+		$saved = \Stillpress\Support\Settings::update( array( $key => $value ) );
+		if ( 'local_path' === $key && '' !== $saved['local_path'] ) {
+			$problem = \Stillpress\Security\TargetPolicy::for_wordpress()->problem( $saved['local_path'] );
+			if ( null !== $problem ) {
+				WP_CLI::warning( $problem );
+			}
+		}
+		WP_CLI::success( sprintf( '%s = %s', $key, is_scalar( $saved[ $key ] ) ? var_export( $saved[ $key ], true ) : wp_json_encode( $saved[ $key ] ) ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_var_export -- Display formatting.
+	}
+
+	/**
+	 * Checks that this site can be published (the same checks as Site Health).
+	 *
+	 * @return void
+	 */
+	public function doctor(): void {
+		$failed = 0;
+		foreach ( ( new \Stillpress\Service\HealthChecks() )->all() as $id => $check ) {
+			$line = sprintf( '%-11s %s', $id, $check['label'] );
+			if ( 'good' === $check['status'] ) {
+				WP_CLI::log( WP_CLI::colorize( '%G✔%n ' ) . $line );
+				continue;
+			}
+			WP_CLI::log( WP_CLI::colorize( 'critical' === $check['status'] ? '%R✘%n ' : '%Y!%n ' ) . $line );
+			WP_CLI::log( '            ' . $check['description'] );
+			if ( 'critical' === $check['status'] ) {
+				++$failed;
+			}
+		}
+		if ( $failed > 0 ) {
+			WP_CLI::error( sprintf( '%d critical problem(s).', $failed ) );
+		}
+		WP_CLI::success( 'Ready to publish.' );
+	}
+
+	/**
+	 * Prints a build's log.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<id>]
+	 * : Build ID. Defaults to the most recent build.
+	 *
+	 * @param string[] $args Positional arguments.
+	 * @return void
+	 */
+	public function log( $args ): void {
+		$id = (int) ( $args[0] ?? 0 );
+		if ( 0 === $id ) {
+			$recent = ( new BuildRepository() )->recent( 1 );
+			$id     = (int) ( $recent[0]['id'] ?? 0 );
+		}
+		foreach ( Logger::lines( $id ) as $line ) {
+			WP_CLI::log( sprintf( '%s [%s] %s', $line['created_at'], $line['level'], $line['message'] ) );
+		}
+	}
+
+	/**
+	 * Forgets everything built so far: the build cache, URL records, dependencies and history.
+	 *
+	 * Deploy targets are not touched. The next build is a full build.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--yes]
+	 * : Don't ask for confirmation.
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function clean( $args, $assoc ): void {
+		global $wpdb;
+		WP_CLI::confirm( 'Delete the build cache and all build records? Deployed sites are not touched.', $assoc );
+		if ( null !== ( new BuildRepository() )->active() ) {
+			WP_CLI::error( 'A build is running. Cancel it first with "wp stillpress cancel".' );
+		}
+		foreach ( \Stillpress\Storage\Schema::TABLES as $table ) {
+			if ( 'target_files' === $table ) {
+				continue;
+				// Keep deploy records so files we put in a target can still be cleaned up.
+			}
+			$wpdb->query( $wpdb->prepare( 'TRUNCATE TABLE %i', \Stillpress\Storage\Schema::table( $table ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Our own tables.
+		}
+		self::delete_tree( \Stillpress\Support\Paths::cache_dir() );
+		delete_option( 'stillpress_published_once' );
+		WP_CLI::success( 'Build state cleared.' );
+	}
+
+	/**
+	 * Deletes a directory tree without following symlinks.
+	 *
+	 * @param string $path Path.
+	 * @return void
+	 */
+	private static function delete_tree( string $path ): void {
+		if ( is_link( $path ) || is_file( $path ) ) {
+			wp_delete_file( $path );
+			return;
+		}
+		if ( ! is_dir( $path ) ) {
+			return;
+		}
+		foreach ( (array) scandir( $path ) as $entry ) {
+			if ( '.' !== $entry && '..' !== $entry ) {
+				self::delete_tree( $path . '/' . $entry );
+			}
+		}
+		rmdir( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Our own cache directory.
 	}
 
 	/**
