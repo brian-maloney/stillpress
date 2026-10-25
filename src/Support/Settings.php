@@ -118,7 +118,7 @@ final class Settings {
 		if ( ! is_array( $current ) ) {
 			$current = array();
 		}
-		$merged = self::sanitize( array_merge( $current, $values ) );
+		$merged = self::sanitize( array_merge( self::defaults(), $current, $values ) );
 		update_option( self::OPTION, $merged );
 		return $merged;
 	}

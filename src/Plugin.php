@@ -70,6 +70,14 @@ final class Plugin {
 		$this->changes = new ChangeListener();
 		$this->changes->register();
 
+		Rest\Controller::register();
+		Admin\AdminBar::register();
+		if ( is_admin() ) {
+			Admin\Admin::register();
+			Admin\Editor::register();
+			Admin\SiteHealth::register();
+		}
+
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'stillpress', Cli\Command::class );
 		}

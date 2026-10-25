@@ -1,0 +1,8 @@
+#wpadminbar .stillpress-ab .ab-icon::before {
+	top: 2px;
+}
+
+#wpadminbar .stillpress-ab-pending .ab-icon::before { color: #dba617; }
+#wpadminbar .stillpress-ab-building .ab-icon::before { color: #72aee6; }
+#wpadminbar .stillpress-ab-failed .ab-icon::before { color: #f86368; }
+#wpadminbar .stillpress-ab-up-to-date .ab-icon::before { color: #68de7c; }

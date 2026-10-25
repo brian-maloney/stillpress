@@ -1,0 +1,91 @@
+/* WordPress button styles would otherwise override the hidden attribute. */
+.stillpress [hidden] {
+	display: none !important;
+}
+
+.stillpress .stillpress-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	margin: 16px 0;
+	max-width: 760px;
+	padding: 16px 24px;
+}
+
+.stillpress .stillpress-choice {
+	display: block;
+	margin: 12px 0 4px;
+}
+
+.stillpress .stillpress-choice span {
+	color: #646970;
+	display: block;
+	margin-left: 24px;
+}
+
+.stillpress .stillpress-indent {
+	margin-left: 24px;
+}
+
+.stillpress .button.hero {
+	margin-top: 16px;
+}
+
+.stillpress .stillpress-state {
+	align-items: center;
+	display: flex;
+	font-size: 15px;
+	gap: 8px;
+}
+
+.stillpress-dot {
+	background: #8c8f94;
+	border-radius: 50%;
+	display: inline-block;
+	height: 10px;
+	width: 10px;
+}
+
+.stillpress-dot-up-to-date { background: #00a32a; }
+.stillpress-dot-pending { background: #dba617; }
+.stillpress-dot-building { background: #2271b1; }
+.stillpress-dot-failed { background: #d63638; }
+
+.stillpress .stillpress-progress progress {
+	max-width: 420px;
+	width: 100%;
+}
+
+.stillpress .stillpress-actions .button[aria-disabled="true"] {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.stillpress .stillpress-facts {
+	display: grid;
+	gap: 6px 16px;
+	grid-template-columns: max-content 1fr;
+}
+
+.stillpress .stillpress-facts dt {
+	color: #646970;
+}
+
+.stillpress .stillpress-facts dd {
+	margin: 0;
+}
+
+.stillpress .stillpress-history {
+	max-width: 1100px;
+}
+
+.stillpress .stillpress-log {
+	max-height: 320px;
+	max-width: 640px;
+	overflow: auto;
+	white-space: pre-wrap;
+}
+
+.stillpress .stillpress-error {
+	color: #d63638;
+}

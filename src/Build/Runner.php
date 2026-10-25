@@ -106,7 +106,12 @@ final class Runner {
 				return false;
 			}
 			$this->builds->update( $build_id, array( 'phase' => 'planning' ) );
-			( new Logger( $build_id ) )->info( sprintf( 'Started a %s build.', $build['kind'] ) );
+			$names = array(
+				'full'        => 'Started a full build.',
+				'incremental' => 'Started an incremental build.',
+				'urls'        => 'Started a build of selected pages.',
+			);
+			( new Logger( $build_id ) )->info( $names[ $build['kind'] ] ?? 'Started a build.' );
 			$build = $this->builds->get( $build_id );
 		}
 		if ( 'running' !== $build['status'] ) {
@@ -199,8 +204,15 @@ final class Runner {
 					$ids[] = $this->urls->ensure( $classified['url'], 'change', $classified['kind'] );
 				}
 			}
+			// URLs the caller asked for explicitly ("Publish to static" in the editor) are always included.
+			foreach ( (array) ( $stats['request_urls'] ?? array() ) as $url ) {
+				$classified = $pipeline->classifier->classify( (string) $url );
+				if ( null !== $classified ) {
+					$ids[] = $this->urls->ensure( $classified['url'], 'request', $classified['kind'] );
+				}
+			}
 			$frontier->add( array_merge( $plan['url_ids'], $ids ) );
-			$logger->info( sprintf( 'Planned an incremental build: %d changes affect %d URLs.', $plan['changes'], $frontier->total() ) );
+			$logger->info( sprintf( 'Planned an incremental build: %1$d %2$s affect %3$d URLs.', $plan['changes'], 1 === $plan['changes'] ? 'change' : 'changes', $frontier->total() ) );
 			$this->builds->merge_stats( (int) $build['id'], array( 'changes' => $plan['changes'] ) );
 			return true;
 		}
