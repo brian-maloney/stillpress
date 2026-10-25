@@ -74,3 +74,25 @@ When home is in a subdirectory (`https://origin/blog`), paths under it map to th
 files outside it can't be placed in the output root and are reported instead of written.
 
 Protocol-relative matches (`//host`) must not follow a URL character, so `https://elsewhere//origin/x` isn't touched.
+
+## D9. Direct file operations instead of WP_Filesystem for build output
+
+The build cache, ZIP archives and local deploy targets are written with PHP's file functions (atomic temp file + rename).
+WP_Filesystem exists so plugins can write into WordPress's own code directories through FTP credentials when the web server
+user can't. We never write there, and a site build means thousands of files, where the abstraction costs time and gives
+no safety. All paths still go through `PathMapper`, and targets through `TargetPolicy`. Files are created with the process
+umask, like core's uploads.
+
+## D10. A page stays published while the origin still serves it
+
+Full builds re-render every URL that is currently published, then crawl from the seeds. A URL leaves the static site only
+when the origin answers 404/410 (or it starts redirecting). We don't garbage-collect pages that merely stopped being linked:
+WordPress still serves them, so removing them would break inbound links and bookmarks. This also gives the differential
+test a precise target: after any edits, an incremental build must produce exactly what a full build produces.
+
+## D11. Incremental builds follow only links to new URLs
+
+While re-rendering affected pages, an incremental build queues a discovered link only if that URL was never published or
+fetched before. That's how a new tag archive or a newly uploaded image gets picked up without re-crawling the site. Assets
+whose files change in place keep their URL and are refreshed by the next full build. Theme and plugin updates trigger a full
+build anyway (`upgrader_process_complete`).

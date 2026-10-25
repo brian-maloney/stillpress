@@ -7,6 +7,9 @@
 
 namespace Stillpress;
 
+use Stillpress\Build\Queue;
+use Stillpress\Deps\ChangeListener;
+use Stillpress\Render\Recorder;
 use Stillpress\Security\Capabilities;
 use Stillpress\Storage\Schema;
 
@@ -52,7 +55,16 @@ final class Plugin {
 		}
 		$this->booted = true;
 
+		// First, so a render request is recognized before any other plugin code reads content.
+		Recorder::maybe_start();
+
 		Capabilities::register();
+		Queue::register();
+		( new ChangeListener() )->register();
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			\WP_CLI::add_command( 'stillpress', Cli\Command::class );
+		}
 
 		add_action( 'init', array( Schema::class, 'maybe_upgrade' ), 1 );
 		add_action( 'wp_initialize_site', array( self::class, 'initialize_site' ), 20 );
@@ -115,5 +127,6 @@ final class Plugin {
 	 * @return void
 	 */
 	public static function deactivate(): void {
+		Queue::unschedule_all();
 	}
 }
