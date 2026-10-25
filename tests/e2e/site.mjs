@@ -62,7 +62,11 @@ export function prepare( name ) {
 		wp( [ 'theme', 'install', setup.theme ], { ignore: true } );
 	}
 	wp( [ 'theme', 'activate', setup.theme ] );
+	// Elementor keeps site settings in a "kit" post named by an option. If the post was deleted while Elementor was
+	// inactive (the system tests reset all content), clear the option so activation creates a fresh kit.
+	wp( [ 'eval', "$id = (int) get_option( 'elementor_active_kit' ); if ( $id && ! get_post( $id ) ) { delete_option( 'elementor_active_kit' ); }" ] );
 	for ( const plugin of setup.plugins ) {
+		wp( [ 'plugin', 'deactivate', plugin ], { ignore: true } );
 		wp( [ 'plugin', 'install', plugin, '--activate' ], { ignore: true } );
 		wp( [ 'plugin', 'activate', plugin ] );
 	}

@@ -21,7 +21,10 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"Stillpress\\Tests\\": "tests/"
+			"Stillpress\\Tests\\Unit\\": "tests/unit/",
+			"Stillpress\\Tests\\Integration\\": "tests/integration/",
+			"Stillpress\\Tests\\System\\": "tests/system/",
+			"Stillpress\\Tests\\Support\\": "tests/Support/"
 		}
 	},
 	"config": {

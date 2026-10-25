@@ -40,7 +40,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Configure wp-env for this matrix cell
-        run: node bin/wp-env-override.js "${{ matrix.php }}" "${{ matrix.wp }}" "${{ matrix.multisite && '1' || '0' }}"
+        # The multisite cell keeps wp-env single-site: the multisite PHPUnit config installs its own network, and a
+        # multisite wp-env breaks the WordPress test-suite install.
+        run: node bin/wp-env-override.js "${{ matrix.php }}" "${{ matrix.wp }}"
       - run: npm run env:start
       - run: npm run composer -- install --no-interaction --no-progress
       - if: ${{ matrix.lint }}

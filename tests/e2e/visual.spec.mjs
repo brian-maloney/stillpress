@@ -11,12 +11,71 @@ import { ORIGIN, STATIC, PAGES, THEMES, prepare } from './site.mjs';
 const selected = ( process.env.THEMES || Object.keys( THEMES ).join( ',' ) ).split( ',' ).filter( Boolean );
 const MAX_DIFF_RATIO = Number( process.env.MAX_DIFF_RATIO || 0.005 );
 
+/**
+ * Waits until every image is downloaded and decoded (lazy images are loaded eagerly). WordPress uses
+ * decoding="async" and loading="lazy", so the browser may otherwise paint before images are ready.
+ *
+ * @param {import('@playwright/test').Page} page Page.
+ */
+async function settleImages( page ) {
+	await page.evaluate( async () => {
+		const images = Array.from( document.images );
+		images.forEach( ( img ) => {
+			if ( 'lazy' === img.loading ) {
+				img.loading = 'eager';
+			}
+		} );
+		// Downloads first (decode() called before an image starts loading resolves at once), then decoding.
+		await Promise.all(
+			images.map( ( img ) =>
+				img.complete && img.naturalWidth > 0
+					? null
+					: new Promise( ( resolve ) => {
+						img.addEventListener( 'load', resolve, { once: true } );
+						img.addEventListener( 'error', resolve, { once: true } );
+						setTimeout( resolve, 15000 );
+					} )
+			)
+		);
+		await Promise.all( images.map( ( img ) => img.decode().catch( () => {} ) ) );
+		if ( document.fonts ) {
+			await document.fonts.ready;
+		}
+	} );
+
+	// The browser can switch an image to another srcset candidate after layout changes. Wait until two consecutive
+	// looks at every image agree and all of them are loaded.
+	let previous = '';
+	for ( let attempt = 0; attempt < 20; attempt++ ) {
+		await page.waitForTimeout( 250 );
+		const state = await page.evaluate( async () => {
+			const images = Array.from( document.images );
+			await Promise.all( images.map( ( img ) => img.decode().catch( () => {} ) ) );
+			return JSON.stringify( images.map( ( img ) => [ img.currentSrc, img.complete, img.naturalWidth > 0 ] ) );
+		} );
+		if ( state === previous && ! state.includes( 'false' ) ) {
+			return;
+		}
+		previous = state;
+	}
+}
+
 async function shoot( page, url, origins ) {
 	const requests = [];
 	page.on( 'request', ( r ) => requests.push( r.url() ) );
 	await page.goto( url, { waitUntil: 'networkidle' } );
 	await page.addStyleTag( { content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}' } );
-	await page.evaluate( () => document.fonts && document.fonts.ready );
+	await settleImages( page );
+
+	// A full-page capture resizes the viewport, and Chrome may then pick a different srcset candidate (it prefers
+	// cached ones) that isn't loaded yet, leaving a blank image in the shot. Resize to the full height ourselves,
+	// let the new candidates load, and only then capture.
+	const width = page.viewportSize().width;
+	const height = await page.evaluate( () => document.documentElement.scrollHeight );
+	await page.setViewportSize( { width, height } );
+	await page.waitForLoadState( 'networkidle' );
+	await settleImages( page );
+
 	const image = await page.screenshot( { fullPage: true, animations: 'disabled' } );
 	return { image, requests: requests.filter( ( u ) => origins.some( ( o ) => u.startsWith( o ) ) ) };
 }
