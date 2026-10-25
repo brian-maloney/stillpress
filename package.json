@@ -1,0 +1,23 @@
+{
+  "name": "stillpress",
+  "private": true,
+  "license": "GPL-2.0-or-later",
+  "devDependencies": {
+    "@wordpress/env": "^12.0.0"
+  },
+  "scripts": {
+    "env": "wp-env",
+    "env:start": "wp-env start",
+    "env:stop": "wp-env stop",
+    "wp": "wp-env run cli wp",
+    "composer": "wp-env run cli --env-cwd=wp-content/plugins/stillpress composer",
+    "lint:php": "wp-env run cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpcs",
+    "lint:php:fix": "wp-env run cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpcbf",
+    "test:unit": "wp-env run cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpunit",
+    "test:integration": "wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpunit -c phpunit-integration.xml.dist",
+    "test:php": "npm run test:unit && npm run test:integration"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

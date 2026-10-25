@@ -1,0 +1,11 @@
+* text=auto eol=lf
+/.github export-ignore
+/tests export-ignore
+/docs export-ignore
+/bin export-ignore
+/node_modules export-ignore
+/.wp-env.json export-ignore
+/phpcs.xml.dist export-ignore
+/phpunit.xml.dist export-ignore
+/phpunit-integration.xml.dist export-ignore
+/CLAUDE.md export-ignore

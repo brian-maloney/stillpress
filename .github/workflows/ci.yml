@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }} / WP ${{ matrix.wp }}${{ matrix.multisite && ' / multisite' || '' }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.wp == 'trunk' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { php: '7.4', wp: '6.6' }
+          - { php: '7.4', wp: 'latest' }
+          - { php: '8.1', wp: '6.8' }
+          - { php: '8.3', wp: 'latest', lint: true }
+          - { php: '8.3', wp: 'latest', multisite: true }
+          - { php: '8.4', wp: 'latest' }
+          - { php: '8.5', wp: 'latest' }
+          - { php: '8.5', wp: 'trunk' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Configure wp-env for this matrix cell
+        run: node bin/wp-env-override.js "${{ matrix.php }}" "${{ matrix.wp }}" "${{ matrix.multisite && '1' || '0' }}"
+      - run: npm run env:start
+      - run: npm run composer -- install --no-interaction --no-progress
+      - if: ${{ matrix.lint }}
+        run: npm run lint:php
+      - run: npm run test:unit
+      - run: npm run test:integration

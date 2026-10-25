@@ -1,0 +1,42 @@
+{
+	"name": "brian-maloney/stillpress",
+	"description": "Publish a WordPress site as static files. Every feature free.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=7.4",
+		"woocommerce/action-scheduler": "^3.9"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^9.6",
+		"yoast/phpunit-polyfills": "^2.0",
+		"wp-coding-standards/wpcs": "^3.1",
+		"phpcompatibility/phpcompatibility-wp": "^2.1",
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+	},
+	"autoload": {
+		"psr-4": {
+			"Stillpress\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"Stillpress\\Tests\\": "tests/"
+		}
+	},
+	"config": {
+		"platform": {
+			"php": "7.4.33"
+		},
+		"sort-packages": true,
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"lint": "phpcs",
+		"lint:fix": "phpcbf",
+		"test:unit": "phpunit --testsuite unit",
+		"test:integration": "phpunit --testsuite integration"
+	}
+}
