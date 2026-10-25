@@ -222,6 +222,50 @@ final class ChangeListenerTest extends \WP_UnitTestCase {
 		$this->assertContains( get_permalink( $grand ), $changes[ "post:{$grand}" ]['urls'] );
 	}
 
+	public function test_deleting_an_ancestor_page_records_descendants_old_and_new_urls(): void {
+		$this->set_permalink_structure( '/%postname%/' );
+		$a = self::factory()->post->create(
+			array(
+				'post_type' => 'page',
+				'post_name' => 'top',
+			)
+		);
+		// A draft in the middle of the tree still puts its slug in the published leaf's address.
+		$b = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_name'   => 'mid',
+				'post_parent' => $a,
+				'post_status' => 'draft',
+			)
+		);
+		$c = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_name'   => 'low',
+				'post_parent' => $b,
+			)
+		);
+		$d = self::factory()->post->create(
+			array(
+				'post_type'   => 'page',
+				'post_name'   => 'leaf',
+				'post_parent' => $c,
+			)
+		);
+		$this->changes();
+		$old = get_permalink( $d );
+		$this->assertStringContainsString( '/top/mid/low/leaf/', $old );
+
+		wp_delete_post( $a, true );
+		$changes = $this->changes();
+
+		$this->assertArrayHasKey( "post:{$d}", $changes );
+		$this->assertContains( $old, $changes[ "post:{$d}" ]['urls'] );
+		$this->assertContains( get_permalink( $d ), $changes[ "post:{$d}" ]['urls'] );
+		$this->assertStringNotContainsString( '/top/', get_permalink( $d ) );
+	}
+
 	public function test_renaming_a_parent_category_records_child_archives(): void {
 		$this->set_permalink_structure( '/%postname%/' );
 		create_initial_taxonomies();

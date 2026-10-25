@@ -172,8 +172,10 @@ final class ChangeListener {
 		// Upper bound on descendants, so a huge tree can't stall a save.
 		$budget = 5000;
 		while ( $parents && $budget > 0 ) {
-			$in  = implode( ', ', array_fill( 0, count( $parents ), '%d' ) );
-			$sql = "SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($in) AND post_status IN ('publish','inherit') AND post_type <> 'revision'";
+			$in = implode( ', ', array_fill( 0, count( $parents ), '%d' ) );
+			// Walk through every status: a draft in the middle of a tree still lends its slug to published pages
+			// below it. Posts that were never public are dropped when the changes are flushed.
+			$sql = "SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ($in) AND post_status <> 'auto-draft' AND post_type <> 'revision'";
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery -- $in holds placeholders only; the live tree must be read.
 			$children = $wpdb->get_col( $wpdb->prepare( $sql, $parents ) );
 			$parents  = array();
@@ -190,7 +192,7 @@ final class ChangeListener {
 					$this->posts[ $child_id ] = self::post_snapshot( $child );
 				}
 			}
-		}
+		}//end while
 	}
 
 	/**
