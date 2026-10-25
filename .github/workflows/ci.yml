@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  schedule:
+    # Nightly: long differential run of incremental vs full builds.
+    - cron: '17 4 * * *'
 
 permissions:
   contents: read
@@ -44,3 +47,46 @@ jobs:
         run: npm run lint:php
       - run: npm run test:unit
       - run: npm run test:integration
+
+  system:
+    name: System tests (real builds over HTTP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run env:start
+      - run: npm run composer -- install --no-interaction --no-progress
+      - name: System tests
+        run: npx wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress -- env STILLPRESS_SYSTEM_TESTS=1 STILLPRESS_DIFF_ITERATIONS=${{ github.event_name == 'schedule' && '500' || '25' }} vendor/bin/phpunit -c phpunit-system.xml.dist
+
+  e2e:
+    name: Visual diff (${{ matrix.theme }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        theme: [ block, classic, pagebuilder ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run env:start
+      - run: npm run composer -- install --no-interaction --no-progress
+      - run: npm run test:e2e
+        env:
+          THEMES: ${{ matrix.theme }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff-${{ matrix.theme }}
+          path: |
+            playwright-report
+            test-results

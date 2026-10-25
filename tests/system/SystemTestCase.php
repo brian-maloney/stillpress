@@ -50,6 +50,9 @@ abstract class SystemTestCase extends TestCase {
 		global $wpdb;
 		$listener = Plugin::instance()->changes();
 
+		// Start from a clean baseline on the web side too: other suites (the visual diffs) activate page builders.
+		update_option( 'active_plugins', array( 'stillpress/stillpress.php' ) );
+
 		foreach ( $wpdb->get_col( "SELECT ID FROM {$wpdb->posts}" ) as $id ) {
 			wp_delete_post( (int) $id, true );
 		}

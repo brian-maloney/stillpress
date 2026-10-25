@@ -10,3 +10,7 @@
 /phpunit-integration.xml.dist export-ignore
 /CLAUDE.md export-ignore
 /phpunit-system.xml.dist export-ignore
+/playwright.config.mjs export-ignore
+/package.json export-ignore
+/package-lock.json export-ignore
+/composer.lock export-ignore
