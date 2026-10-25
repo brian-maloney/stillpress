@@ -23,23 +23,7 @@ final class PathMapperTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
-		$this->rmrf( $this->tmp );
-	}
-
-	private function rmrf( string $path ): void {
-		if ( is_link( $path ) || is_file( $path ) ) {
-			unlink( $path );
-			return;
-		}
-		if ( ! is_dir( $path ) ) {
-			return;
-		}
-		foreach ( scandir( $path ) as $entry ) {
-			if ( '.' !== $entry && '..' !== $entry ) {
-				$this->rmrf( $path . '/' . $entry );
-			}
-		}
-		rmdir( $path );
+		\Stillpress\Tests\Support\Fs::rmrf( $this->tmp );
 	}
 
 	private function mapper(): PathMapper {
