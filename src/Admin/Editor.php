@@ -52,9 +52,9 @@ final class Editor {
 		}
 		wp_enqueue_script(
 			'stillpress-editor',
-			plugins_url( 'assets/js/editor.js', STILLPRESS_FILE ),
+			\Stillpress\Support\Assets::url( 'assets/js/editor.js' ),
 			array( 'wp-plugins', 'wp-editor', 'wp-element', 'wp-components', 'wp-data', 'wp-api-fetch', 'wp-i18n', 'wp-notices', 'wp-dom-ready', 'wp-preferences' ),
-			STILLPRESS_VERSION,
+			\Stillpress\Support\Assets::version( 'assets/js/editor.js' ),
 			true
 		);
 		wp_set_script_translations( 'stillpress-editor', 'stillpress' );

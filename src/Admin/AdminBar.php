@@ -105,7 +105,7 @@ final class AdminBar {
 		if ( ! is_admin_bar_showing() || ! current_user_can( Capabilities::PUBLISH ) ) {
 			return;
 		}
-		wp_enqueue_script( 'stillpress-admin-bar', plugins_url( 'assets/js/admin-bar.js', STILLPRESS_FILE ), array( 'heartbeat' ), STILLPRESS_VERSION, true );
-		wp_enqueue_style( 'stillpress-admin-bar', plugins_url( 'assets/css/admin-bar.css', STILLPRESS_FILE ), array(), STILLPRESS_VERSION );
+		wp_enqueue_script( 'stillpress-admin-bar', \Stillpress\Support\Assets::url( 'assets/js/admin-bar.js' ), array( 'heartbeat' ), \Stillpress\Support\Assets::version( 'assets/js/admin-bar.js' ), true );
+		wp_enqueue_style( 'stillpress-admin-bar', \Stillpress\Support\Assets::url( 'assets/css/admin-bar.css' ), array(), \Stillpress\Support\Assets::version( 'assets/css/admin-bar.css' ) );
 	}
 }
