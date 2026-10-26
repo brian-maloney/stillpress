@@ -148,3 +148,26 @@ most WordPress hosts forbid. SFTP's change-only uploads cover the same need. Rev
 Integration tests run against a real OpenSSH server built from `alpine` (tests/sftp), not a mock: host-key, login and
 rename behavior are what matter, and only a real server shows them.
 
+## D15. Git deploys: pure-PHP smart-HTTP push to a branch Stillpress owns
+
+The maintained PHP Git libraries shell out to the `git` binary, which needs `proc_open` and an installed Git, and most
+WordPress hosts have neither. Provider APIs (GitHub's Git Data API) are provider-specific and cost one call per file. So
+the deployer speaks Git's smart-HTTP protocol itself: it builds blob, tree and commit objects, writes a version-2 pack of
+whole objects (no deltas; zlib only) and sends it to `git-receive-pack` with a token over HTTPS. Object IDs and tree
+ordering are checked against IDs computed by Git itself, and the integration tests push to a real `git-http-backend` and
+run `git fsck` on the result. SSH remotes and SHA-256 repositories aren't supported.
+
+The deployer owns one branch and commits the whole site as its tree, with the current head as parent. That keeps every
+push a fast-forward, keeps history (a bad publish can be reverted with Git), and needs no fetch: we never read the
+remote tree, only its refs. A branch whose head isn't the commit we last pushed is refused unless the admin opts in
+("Replace the branch's contents"), which mirrors the marker rule for folders. When the head is unknown, every blob is
+sent, since the server's contents can't be known without a fetch.
+
+Large first deploys would exceed one slice, PHP's memory and some hosts' request limits, so blobs beyond 16 MB go up in
+batches, each in a commit on a temporary `stillpress-upload-<key>` branch that keeps them reachable (unreachable objects
+may be garbage-collected) until the final push moves the real branch and deletes the temporary one.
+
+Writing the tests also showed that Requests ignores its `verify` option inside `request_multiple()`, so S3's concurrent
+uploads had been verified against the system CA store rather than WordPress's bundle. `RequestsTransport` now sets the
+bundle on every curl handle.
+

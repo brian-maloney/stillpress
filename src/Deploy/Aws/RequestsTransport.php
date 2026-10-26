@@ -8,6 +8,7 @@
 namespace Stillpress\Deploy\Aws;
 
 use WpOrg\Requests\Exception as RequestsException;
+use WpOrg\Requests\Hooks;
 use WpOrg\Requests\Requests;
 use WpOrg\Requests\Response;
 
@@ -35,14 +36,23 @@ final class RequestsTransport implements Transport {
 	private $timeout;
 
 	/**
+	 * CA bundle used to verify TLS certificates.
+	 *
+	 * @var string
+	 */
+	private $ca_bundle;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param int   $concurrency Requests in flight at once.
-	 * @param float $timeout     Per-request timeout in seconds.
+	 * @param int    $concurrency Requests in flight at once.
+	 * @param float  $timeout     Per-request timeout in seconds.
+	 * @param string $ca_bundle   CA bundle file; '' for the one that ships with WordPress. Certificates are always verified.
 	 */
-	public function __construct( int $concurrency = 4, float $timeout = 60.0 ) {
+	public function __construct( int $concurrency = 4, float $timeout = 60.0, string $ca_bundle = '' ) {
 		$this->concurrency = max( 1, $concurrency );
 		$this->timeout     = $timeout;
+		$this->ca_bundle   = '' === $ca_bundle ? ABSPATH . WPINC . '/certificates/ca-bundle.crt' : $ca_bundle;
 	}
 
 	/**
@@ -52,11 +62,24 @@ final class RequestsTransport implements Transport {
 	 * @return array<int|string,array{status:int,headers:array<string,string>,body:string,error:string}>
 	 */
 	public function send( array $requests ): array {
+		// The curl transport applies `verify` to single requests only, not to request_multiple() handles, which would
+		// then fall back to the system's CA store. Set the bundle on every handle so the choice above always holds.
+		$ca    = $this->ca_bundle;
+		$hooks = new Hooks();
+		$hooks->register(
+			'curl.before_request',
+			static function ( &$handle ) use ( $ca ) {
+				curl_setopt( $handle, CURLOPT_CAINFO, $ca ); // phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_setopt -- Requests hook hands us the raw handle.
+				curl_setopt( $handle, CURLOPT_SSL_VERIFYPEER, true ); // phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_setopt -- See above.
+				curl_setopt( $handle, CURLOPT_SSL_VERIFYHOST, 2 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_setopt -- See above.
+			}
+		);
 		$options = array(
+			'hooks'            => $hooks,
 			'timeout'          => $this->timeout,
 			'connect_timeout'  => min( 10.0, $this->timeout ),
 			'follow_redirects' => false,
-			'verify'           => ABSPATH . WPINC . '/certificates/ca-bundle.crt',
+			'verify'           => $this->ca_bundle,
 			'useragent'        => 'Stillpress/' . ( defined( 'STILLPRESS_VERSION' ) ? STILLPRESS_VERSION : 'dev' ),
 		);
 		$out     = array();

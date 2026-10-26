@@ -24,7 +24,9 @@
     "test:integration:multisite": "wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpunit -c phpunit-integration-multisite.xml.dist",
     "check:licenses": "wp-env run cli --env-cwd=wp-content/plugins/stillpress sh -c 'composer licenses --no-dev --format=json | php bin/check-licenses.php'",
     "sftp:start": "bin/sftp-test-server.sh start",
-    "sftp:stop": "bin/sftp-test-server.sh stop"
+    "sftp:stop": "bin/sftp-test-server.sh stop",
+    "git:start": "bin/git-test-server.sh start",
+    "git:stop": "bin/git-test-server.sh stop"
   },
   "engines": {
     "node": ">=20"

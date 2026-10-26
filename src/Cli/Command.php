@@ -502,6 +502,11 @@ final class Command {
 	 *     $ wp stillpress target check sftp
 	 *     $ wp stillpress target set sftp host_key SHA256:...
 	 *
+	 *     # Git: publish to the gh-pages branch of a repository.
+	 *     $ wp stillpress target set git repository_url https://github.com/example/site.git
+	 *     $ printf %s "$GITHUB_TOKEN" | wp stillpress secret set git token
+	 *     $ wp stillpress target check git
+	 *
 	 * @param string[]             $args  Positional arguments.
 	 * @param array<string,string> $assoc Options.
 	 * @return void

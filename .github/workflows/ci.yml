@@ -50,11 +50,11 @@ jobs:
       - if: ${{ matrix.lint }}
         name: Runtime dependency licences are GPL-compatible
         run: npm run check:licenses
-      - name: Start the test SFTP server
-        run: npm run sftp:start
-      - name: SFTP tests must run, not skip
+      - name: Start the test SFTP and Git servers
+        run: npm run sftp:start && npm run git:start
+      - name: SFTP and Git tests must run, not skip
         run: |
-          npx wp-env run tests-cli php -r 'exit( @fsockopen( "sftp.test", 22, $n, $s, 5 ) ? 0 : 1 );'
+          npx wp-env run tests-cli php -r 'exit( @fsockopen( "sftp.test", 22, $n, $s, 5 ) && @fsockopen( "git.test", 443, $n, $s, 5 ) ? 0 : 1 );'
       - run: npm run test:unit
       - run: npm run test:integration
       - if: ${{ matrix.multisite }}

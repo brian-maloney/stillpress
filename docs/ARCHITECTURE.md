@@ -116,7 +116,7 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through
-`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation) and **SFTP**.
+`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation), **SFTP** and **Git**.
 - Local directory applies the changeset with an atomic write per file (temp file + rename). It only deletes files listed in its own
   manifest, and requires a marker file `.stillpress-target` in the target directory.
 - ZIP is built from the cache and downloaded through an authenticated, nonce-checked admin endpoint (streamed). There's no public URL for it.
@@ -144,6 +144,17 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   with `.stillpress-target`, and only recorded files are deleted (never recursively). Each file is uploaded under a temporary
   name and moved into place with OpenSSH's `posix-rename` (atomic), or delete-then-rename where the server lacks it. Folders
   emptied by deletes are removed. A dropped connection stops the deploy; the next one resumes from the records.
+- **Git** (D15) commits the build to one branch it owns and pushes over Git's smart-HTTP protocol with a token, in pure
+  PHP (`Deploy\Git`: object IDs, trees, version-2 packs of whole objects, pkt-lines, receive-pack with report-status).
+  Each publish is one commit whose tree is the whole site plus `.stillpress-target` and `.nojekyll`, with the branch head as
+  parent, so pushes are fast-forwards and history is kept. A branch with commits from elsewhere is refused unless "Replace
+  the branch's contents" is on. Only new and changed blobs are sent, located through `target_files` records of each file's
+  SHA-256 and blob ID; when the branch head isn't the commit we last pushed, everything is sent again. Deploys over 16 MB
+  push their blobs in batches to `refs/heads/stillpress-upload-<key>` (one commit per batch, so the server keeps them),
+  then a final push moves the branch and deletes the upload branch, atomically where the server supports it.
+- **TLS for remote targets.** `RequestsTransport` verifies certificates against WordPress's CA bundle (or a bundle passed
+  in, which only tests do) on every handle. Requests applies its `verify` option to single requests only, so the bundle is
+  set through the `curl.before_request` hook as well.
 
 ## Secrets
 `Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of

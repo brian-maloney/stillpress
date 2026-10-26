@@ -260,7 +260,8 @@ final class TargetConfig {
 		if ( 'select' === $def['type'] ) {
 			return array_key_exists( $value, (array) $def['options'] ) ? $value : null;
 		}
-		if ( '' !== $def['pattern'] && '' !== $value && ! preg_match( '~^(?:' . $def['pattern'] . ')$~D', $value ) ) {
+		// "~" is the delimiter here, so a literal "~" in a field's pattern must be escaped first.
+		if ( '' !== $def['pattern'] && '' !== $value && ! preg_match( '~^(?:' . str_replace( '~', '\\~', (string) $def['pattern'] ) . ')$~D', $value ) ) {
 			return null;
 		}
 		return $value;
