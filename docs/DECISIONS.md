@@ -110,3 +110,20 @@ protection against a dump is weaker, which matches what core's own cookies get. 
 write options from moving a ciphertext into a field whose value is shown or sent elsewhere. Rotating the salts loses stored
 secrets on purpose; Site Health and `secret list` say which ones to enter again. Constants and environment variables
 always win, so hosts that inject credentials never store them at all.
+
+## D13. Hand-written SigV4 instead of the AWS SDK
+
+The AWS SDK for PHP 3.x requires PHP 8.1 and pulls in Guzzle 7/8, JMESPath and `aws-crt-php`. Bundling it would mean
+raising Composer's platform pin (D5), turning off Composer's platform check so 7.4 sites still load, and prefixing Guzzle
+(Strauss or similar) so it can't clash with other plugins' copies; S3 would then be unavailable below PHP 8.1. A static-site
+deploy needs five S3 calls and one CloudFront call, so we sign requests ourselves (`Deploy\Aws\SigV4`, about 250 lines).
+
+This is request authentication, not new cryptography: an HMAC-SHA256 over a canonical request, computed by PHP's
+`hash_hmac()`, with TLS from curl. The risk is a canonicalization mistake, which fails loudly (403) rather than silently.
+It is tested against AWS's SigV4 test suite (`tests/fixtures/aws4_testsuite`, Apache-2.0, from botocore's copy, with its
+LICENSE and NOTICE kept) and against the four worked examples from AWS's S3 signing documentation (retrieved from an
+archived copy of `sig-v4-header-based-auth.html`, since that page now redirects). S3 mode doesn't normalize paths, as AWS
+requires. Not supported, on purpose: instance-profile, SSO and assume-role credential providers (use constants or
+environment variables with temporary credentials and a session token instead), and chunked/streaming signatures (large files
+use multipart uploads). Revisit if we raise the PHP floor to 8.1+ and want those credential providers.
+
