@@ -184,10 +184,12 @@ final class RemoteClient {
 		$offset = 0;
 		$length = strlen( $data );
 		while ( $offset + 4 <= $length ) {
-			$size = hexdec( substr( $data, $offset, 4 ) );
-			if ( ! ctype_xdigit( substr( $data, $offset, 4 ) ) ) {
+			$head = substr( $data, $offset, 4 );
+			if ( ! ctype_xdigit( $head ) ) {
 				break;
+				// Checked first: hexdec() warns about non-hex input on PHP 8.5.
 			}
+			$size = (int) hexdec( $head );
 			if ( 0 === $size ) {
 				$out[]   = null;
 				$offset += 4;
