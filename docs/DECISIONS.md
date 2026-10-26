@@ -171,3 +171,17 @@ Writing the tests also showed that Requests ignores its `verify` option inside `
 uploads had been verified against the system CA store rather than WordPress's bundle. `RequestsTransport` now sets the
 bundle on every curl handle.
 
+## D16. Netlify through file-digest deploys, never spending a deploy on an unchanged site
+
+Netlify's API offers ZIP deploys and file-digest deploys. ZIP deploys re-upload the whole site every time and are capped
+at 25,000 files; with digests, Netlify asks only for content it doesn't already store, so an incremental publish uploads
+a few files. Every deploy still lists every file, because a Netlify deploy is always the whole site.
+
+The API allows three deploys a minute and 100 a day. Auto-publish debounces content changes by a minute, so a busy site
+could otherwise run out; a publish whose files match the last deploy therefore makes no API call at all, and a 429 stops
+the deploy with a message while the changes stay pending for the next publish.
+
+Requests over 30 seconds are cut off, so deploys are created `async` and polled for up to 20 seconds per call; the deploy ID
+and a fingerprint of its file list are saved, and the next slice resumes it rather than creating another (which would
+spend another deploy). Serverless functions aren't uploaded: a static export has none.
+

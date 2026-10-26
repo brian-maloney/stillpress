@@ -507,6 +507,10 @@ final class Command {
 	 *     $ printf %s "$GITHUB_TOKEN" | wp stillpress secret set git token
 	 *     $ wp stillpress target check git
 	 *
+	 *     # Netlify: the site's API ID and a personal access token.
+	 *     $ wp stillpress target set netlify site_id 0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b
+	 *     $ printf %s "$NETLIFY_TOKEN" | wp stillpress secret set netlify token
+	 *
 	 * @param string[]             $args  Positional arguments.
 	 * @param array<string,string> $assoc Options.
 	 * @return void

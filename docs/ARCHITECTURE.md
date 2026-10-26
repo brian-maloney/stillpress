@@ -116,7 +116,7 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through
-`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation), **SFTP** and **Git**.
+`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation), **SFTP**, **Git** and **Netlify**.
 - Local directory applies the changeset with an atomic write per file (temp file + rename). It only deletes files listed in its own
   manifest, and requires a marker file `.stillpress-target` in the target directory.
 - ZIP is built from the cache and downloaded through an authenticated, nonce-checked admin endpoint (streamed). There's no public URL for it.
@@ -152,6 +152,12 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   SHA-256 and blob ID; when the branch head isn't the commit we last pushed, everything is sent again. Deploys over 16 MB
   push their blobs in batches to `refs/heads/stillpress-upload-<key>` (one commit per batch, so the server keeps them),
   then a final push moves the branch and deletes the upload branch, atomically where the server supports it.
+- **Netlify** (D16) uses the API's file-digest deploys: one `async` deploy listing every file's SHA-1, then uploads of only
+  the hashes Netlify reports missing. SHA-1s are kept per path beside the SHA-256 records, so unchanged files aren't
+  re-hashed. A site with no changes since the last deploy creates no deploy (Netlify allows 100 API deploys a day). The open
+  deploy's ID and a fingerprint of its file list are saved, so a deploy interrupted while Netlify prepares it or mid-upload
+  resumes in the next slice; an expired or failed one is replaced. Files with `#` or `?` in their path are skipped, as
+  Netlify requires.
 - **TLS for remote targets.** `RequestsTransport` verifies certificates against WordPress's CA bundle (or a bundle passed
   in, which only tests do) on every handle. Requests applies its `verify` option to single requests only, so the bundle is
   set through the `curl.before_request` hook as well.
