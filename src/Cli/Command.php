@@ -453,6 +453,121 @@ final class Command {
 	}
 
 	/**
+	 * Shows and changes the settings of deploy targets.
+	 *
+	 * Every field can also be pinned with a constant or environment variable named STILLPRESS_<TARGET>_<FIELD>.
+	 * Secret fields are set with "wp stillpress secret set" and never printed.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <action>
+	 * : list, show, set or check.
+	 * ---
+	 * options:
+	 *   - list
+	 *   - show
+	 *   - set
+	 *   - check
+	 * ---
+	 *
+	 * [<target>]
+	 * : Target ID, for example s3.
+	 *
+	 * [<field>]
+	 * : For set: field name.
+	 *
+	 * [<value>]
+	 * : For set: new value. An empty string restores the default.
+	 *
+	 * [--format=<format>]
+	 * : Output format for list and show.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     $ wp stillpress target show s3
+	 *     $ wp stillpress target set s3 bucket www.example.org
+	 *     $ wp stillpress target set s3 region eu-west-1
+	 *     $ printf %s "$AWS_SECRET_ACCESS_KEY" | wp stillpress secret set s3 secret_access_key
+	 *     $ wp stillpress target check s3
+	 *     $ wp stillpress settings set target s3
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function target( $args, $assoc ): void {
+		$action   = $args[0] ?? 'list';
+		$registry = \Stillpress\Deploy\Registry::instance();
+		if ( 'list' === $action ) {
+			$rows = array();
+			foreach ( $registry->all() as $id => $deployer ) {
+				$rows[] = array(
+					'target'  => $id,
+					'label'   => $deployer->label(),
+					'active'  => \Stillpress\Support\Settings::get( 'target' ) === $id ? 'yes' : '',
+					'problem' => (string) $deployer->problem(),
+				);
+			}
+			WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'target', 'label', 'active', 'problem' ) );
+			return;
+		}
+		$id       = (string) ( $args[1] ?? '' );
+		$deployer = $registry->get( $id );
+		if ( null === $deployer ) {
+			WP_CLI::error( sprintf( 'Unknown target "%s". Known: %s', $id, implode( ', ', array_keys( $registry->all() ) ) ) );
+		}
+		$fields = \Stillpress\Deploy\TargetConfig::fields( $deployer );
+		if ( 'show' === $action ) {
+			$rows = array();
+			foreach ( $fields as $name => $def ) {
+				$value = \Stillpress\Deploy\TargetConfig::value( $deployer, $name );
+				if ( 'secret' === $def['type'] ) {
+					$value = '' === $value ? '' : '(hidden)';
+				} elseif ( is_bool( $value ) ) {
+					$value = $value ? 'true' : 'false';
+				}
+				$rows[] = array(
+					'field'    => $name,
+					'value'    => $value,
+					'source'   => \Stillpress\Deploy\TargetConfig::source( $deployer, $name ),
+					'required' => $def['required'] ? 'yes' : '',
+					'constant' => \Stillpress\Security\Secrets::name( $id, $name ),
+				);
+			}
+			if ( ! $rows ) {
+				WP_CLI::log( sprintf( '%s has no settings of its own.', $deployer->label() ) );
+				return;
+			}
+			WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'field', 'value', 'source', 'required', 'constant' ) );
+			return;
+		}//end if
+		if ( 'check' === $action ) {
+			$problem = $deployer instanceof \Stillpress\Deploy\ConfigurableDeployerInterface ? $deployer->check_connection() : $deployer->problem();
+			if ( null !== $problem ) {
+				WP_CLI::error( $problem );
+			}
+			WP_CLI::success( sprintf( '%s is ready.', $deployer->label() ) );
+			return;
+		}
+		$field = (string) ( $args[2] ?? '' );
+		if ( isset( $fields[ $field ] ) && 'secret' === $fields[ $field ]['type'] ) {
+			WP_CLI::error( sprintf( '%s is a secret. Use: wp stillpress secret set %s %s', $field, $id, $field ) );
+		}
+		try {
+			\Stillpress\Deploy\TargetConfig::set( $deployer, $field, (string) ( $args[3] ?? '' ) );
+		} catch ( \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+		} catch ( \LogicException $e ) {
+			WP_CLI::error( $e->getMessage() );
+		}
+		$value = \Stillpress\Deploy\TargetConfig::value( $deployer, $field );
+		WP_CLI::success( sprintf( '%s %s = %s', $id, $field, is_bool( $value ) ? ( $value ? 'true' : 'false' ) : $value ) );
+	}
+
+	/**
 	 * Manages deploy credentials. Values are never printed.
 	 *
 	 * Each secret can also come from a wp-config.php constant or an environment variable named

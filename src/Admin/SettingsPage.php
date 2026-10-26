@@ -111,6 +111,17 @@ final class SettingsPage {
 		if ( $from_form && ! self::can_edit_paths() ) {
 			$input['local_path'] = $current['local_path'] ?? '';
 			$input['connect_to'] = $current['connect_to'] ?? '';
+			// Endpoints and hosts of deploy targets follow the same rule as filesystem paths.
+			$restricted = isset( $input['targets'] ) && is_array( $input['targets'] ) ? \Stillpress\Deploy\TargetConfig::restricted_fields() : array();
+			foreach ( $restricted as $id => $names ) {
+				foreach ( $names as $name ) {
+					if ( isset( $current['targets'][ $id ][ $name ] ) ) {
+						$input['targets'][ $id ][ $name ] = $current['targets'][ $id ][ $name ];
+					} else {
+						unset( $input['targets'][ $id ][ $name ] );
+					}
+				}
+			}
 		}
 		$clean = Settings::sanitize( array_merge( Settings::defaults(), $current, $input ) );
 

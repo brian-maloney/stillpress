@@ -168,4 +168,27 @@ final class CliTest extends SystemTestCase {
 		list( , $out ) = $this->wp( 'secret list --format=count' );
 		$this->assertSame( '0', trim( $out ) );
 	}
+
+	public function test_target_list_show_set_hide_secrets(): void {
+		list( $code, $out ) = $this->wp( 'target list --format=json' );
+		$this->assertSame( 0, $code );
+		$this->assertContains( 's3', array_column( json_decode( $out, true ), 'target' ) );
+
+		list( $code, $out, $err ) = $this->wp( 'target set s3 bucket cli-bucket' );
+		$this->assertSame( 0, $code, $out . $err );
+		list( $code ) = $this->wp( 'target set s3 bucket NOT_VALID' );
+		$this->assertNotSame( 0, $code );
+		list( $code, $out ) = $this->wp( 'target set s3 secret_access_key typed-on-the-command-line' );
+		$this->assertNotSame( 0, $code, 'Secrets are refused as arguments.' );
+		$this->wp( 'secret set s3 secret_access_key', "cli-secret-value-42\n" );
+
+		list( $code, $out ) = $this->wp( 'target show s3 --format=json' );
+		$this->assertSame( 0, $code );
+		$this->assertStringNotContainsString( 'cli-secret-value-42', $out );
+		$rows = array_column( json_decode( $out, true ), null, 'field' );
+		$this->assertSame( 'cli-bucket', $rows['bucket']['value'] );
+		$this->assertSame( '(hidden)', $rows['secret_access_key']['value'] );
+		$this->assertSame( 'stored', $rows['secret_access_key']['source'] );
+		$this->assertSame( 'STILLPRESS_S3_BUCKET', $rows['bucket']['constant'] );
+	}
 }

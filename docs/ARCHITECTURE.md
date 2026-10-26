@@ -116,10 +116,27 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through
-`stillpress_register_deployers`. M1 ships **Local directory** and **ZIP**.
+`stillpress_register_deployers`. Built in: **Local directory**, **ZIP** and **Amazon S3** (with optional CloudFront invalidation).
 - Local directory applies the changeset with an atomic write per file (temp file + rename). It only deletes files listed in its own
   manifest, and requires a marker file `.stillpress-target` in the target directory.
 - ZIP is built from the cache and downloaded through an authenticated, nonce-checked admin endpoint (streamed). There's no public URL for it.
+- **Target settings.** A deployer that implements `ConfigurableDeployerInterface` declares `fields()` (text, secret, bool,
+  select; required, pattern, default, `restricted`). `TargetConfig` resolves each field from a `STILLPRESS_<TARGET>_<FIELD>`
+  constant, then the environment, then the `targets` entry of the settings (secret fields: `Secrets`), then the default.
+  Every write goes through the field's validation, including direct `Settings::update()` calls. `restricted` fields (hosts,
+  endpoints) follow the filesystem-path rule: super admins only on multisite. `check_connection()` makes one cheap live
+  request. CLI: `wp stillpress target list|show|set|check`.
+- **Resumable deploys.** A deployer that implements `ResumableDeployerInterface` gets the slice deadline and may return with
+  `done = false`; the runner keeps the build in `deploying`, adds up the counts in `deploy_progress`, and calls it again in the
+  next slice. Progress lives in the deployer's own `target_files` records, so nothing is sent twice.
+- **S3** mirrors the build into a bucket under an optional key prefix, through a minimal hand-written client (`Deploy\Aws`)
+  signed with SigV4 (D13). Changed files go up with PutObject a few at a time over `Requests::request_multiple` (redirects off,
+  WordPress's CA bundle); files over 16 MB go up as multipart uploads whose upload ID and part ETags are saved after each part,
+  so a slice never runs past its deadline. Deletes use DeleteObjects and only ever name keys this deployer uploaded. A 3xx/4xx
+  answer stops the deploy with S3's error code; 5xx and network errors mark the file failed for the next deploy to retry. With
+  a distribution ID, the public paths of changed and deleted files (plus the folder of each `index.html`) are invalidated once
+  the deploy finishes; more than 300 paths become a single `/*`. Custom endpoints (R2, MinIO, B2) are HTTPS only, and buckets
+  with dots use path-style addressing because their virtual-host names don't match S3's certificate.
 
 ## Secrets
 `Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of

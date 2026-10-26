@@ -41,6 +41,20 @@ final class DeployResult {
 	public $unchanged = 0;
 
 	/**
+	 * False when a resumable deployer stopped at its deadline with work left (see ResumableDeployerInterface).
+	 *
+	 * @var bool
+	 */
+	public $done = true;
+
+	/**
+	 * Files that could not be deployed this time. They are retried by the next deploy.
+	 *
+	 * @var int
+	 */
+	public $failed = 0;
+
+	/**
 	 * Where the result can be found.
 	 *
 	 * @var string
@@ -58,6 +72,7 @@ final class DeployResult {
 			'modified'  => $this->modified,
 			'deleted'   => $this->deleted,
 			'unchanged' => $this->unchanged,
+			'failed'    => $this->failed,
 			'location'  => $this->location,
 		);
 	}

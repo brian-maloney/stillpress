@@ -56,6 +56,8 @@ final class Settings {
 			'connect_to'                      => '',
 			'feeds'                           => 'main',
 			'max_urls'                        => 50000,
+			// Per-deployer fields, see Deploy\TargetConfig.
+			'targets'                         => array(),
 		);
 	}
 
@@ -165,6 +167,8 @@ final class Settings {
 		$out['feeds'] = in_array( $feeds, array( 'none', 'main', 'all' ), true ) ? $feeds : $defaults['feeds'];
 
 		$out['max_urls'] = isset( $input['max_urls'] ) ? max( 1, min( 1000000, (int) $input['max_urls'] ) ) : $defaults['max_urls'];
+
+		$out['targets'] = \Stillpress\Deploy\TargetConfig::sanitize( $input['targets'] ?? array() );
 
 		return $out;
 	}

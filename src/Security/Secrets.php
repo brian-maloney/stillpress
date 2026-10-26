@@ -161,6 +161,24 @@ final class Secrets {
 	}
 
 	/**
+	 * A value set in wp-config.php or the environment under the secret's name, without registering it with the
+	 * Redactor. TargetConfig uses this for non-secret fields (bucket, region), which follow the same lookup order.
+	 *
+	 * @param string $deployer Deployer ID.
+	 * @param string $field    Field name.
+	 * @return array{0:string,1:string|null} Source (SOURCE_CONSTANT, SOURCE_ENVIRONMENT or SOURCE_NONE) and value.
+	 */
+	public static function pinned( string $deployer, string $field ): array {
+		$name  = self::name( $deployer, $field );
+		$value = self::constant( $name );
+		if ( null !== $value ) {
+			return array( self::SOURCE_CONSTANT, $value );
+		}
+		$value = self::environment( $name );
+		return null === $value ? array( self::SOURCE_NONE, null ) : array( self::SOURCE_ENVIRONMENT, $value );
+	}
+
+	/**
 	 * A non-empty constant's value.
 	 *
 	 * @param string $name Constant name.

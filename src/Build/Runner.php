@@ -158,8 +158,9 @@ final class Runner {
 					break;
 
 				case 'deploying':
-					$this->deploy( $build, $pipeline, $logger );
-					$this->builds->update( $build_id, array( 'phase' => 'done' ) );
+					if ( $this->deploy( $build, $pipeline, $logger, $budget > 0 ? $start + $budget : 0.0 ) ) {
+						$this->builds->update( $build_id, array( 'phase' => 'done' ) );
+					}
 					break;
 
 				default:
@@ -344,10 +345,11 @@ final class Runner {
 	 * @param array<string,mixed> $build    Build.
 	 * @param Pipeline            $pipeline Components.
 	 * @param Logger              $logger   Log.
-	 * @return void
+	 * @param float               $deadline When a resumable deployer should stop (0 = no limit).
+	 * @return bool True when the deploy finished; false when a resumable deployer stopped at the deadline.
 	 * @throws \RuntimeException When the target is missing or misconfigured.
 	 */
-	private function deploy( array $build, Pipeline $pipeline, Logger $logger ): void {
+	private function deploy( array $build, Pipeline $pipeline, Logger $logger, float $deadline ): bool {
 		$target   = (string) ( $build['stats']['target'] ?? $pipeline->settings['target'] );
 		$deployer = Registry::instance()->get( $target );
 		if ( null === $deployer ) {
@@ -365,9 +367,37 @@ final class Runner {
 		 * @param string               $target   Deployer ID.
 		 */
 		$manifest = (array) apply_filters( 'stillpress_manifest', $manifest, $target );
-		$result   = $deployer->deploy( $manifest, $pipeline->cache->mapper()->root(), $logger );
-		$this->builds->merge_stats( (int) $build['id'], array( 'deploy' => $result->to_array() + array( 'target' => $target ) ) );
-		$logger->info( sprintf( 'Deployed to %s: %d added, %d changed, %d deleted, %d unchanged.', $deployer->label(), $result->added, $result->modified, $result->deleted, $result->unchanged ) );
+		if ( $deployer instanceof \Stillpress\Deploy\ResumableDeployerInterface ) {
+			$deployer->set_deadline( $deadline );
+		}
+		$result = $deployer->deploy( $manifest, $pipeline->cache->mapper()->root(), $logger );
+
+		// A resumable deploy spans slices: add this slice's counts to the earlier ones. Files uploaded by earlier
+		// slices look unchanged now, so "unchanged" is worked out from the totals at the end.
+		$totals = $build['stats']['deploy_progress'] ?? array();
+		foreach ( array( 'added', 'modified', 'deleted', 'failed' ) as $count ) {
+			$totals[ $count ] = (int) ( $totals[ $count ] ?? 0 ) + $result->{$count};
+		}
+		if ( ! $result->done ) {
+			$this->builds->merge_stats( (int) $build['id'], array( 'deploy_progress' => $totals ) );
+			$logger->info( sprintf( 'Deploying to %s: %d files sent so far; continuing.', $deployer->label(), $totals['added'] + $totals['modified'] ) );
+			return false;
+		}
+		$summary = array(
+			'added'     => $totals['added'],
+			'modified'  => $totals['modified'],
+			'deleted'   => $totals['deleted'],
+			'unchanged' => max( 0, count( $manifest ) - $totals['added'] - $totals['modified'] - $totals['failed'] ),
+			'failed'    => $totals['failed'],
+			'location'  => $result->location,
+			'target'    => $target,
+		);
+		$this->builds->merge_stats( (int) $build['id'], array( 'deploy' => $summary ) );
+		$logger->info( sprintf( 'Deployed to %s: %d added, %d changed, %d deleted, %d unchanged.', $deployer->label(), $summary['added'], $summary['modified'], $summary['deleted'], $summary['unchanged'] ) );
+		if ( $summary['failed'] > 0 ) {
+			$logger->warning( sprintf( '%d files could not be deployed; the next deploy retries them.', $summary['failed'] ) );
+		}
+		return true;
 	}
 
 	/**
