@@ -23,6 +23,13 @@ final class Admin {
 	const SETTINGS_PAGE = 'stillpress-settings';
 
 	/**
+	 * Hook suffix of the settings screen. It depends on the translated menu title, so it is kept, not rebuilt.
+	 *
+	 * @var string
+	 */
+	private static $settings_hook = '';
+
+	/**
 	 * Registers hooks.
 	 *
 	 * @return void
@@ -55,7 +62,7 @@ final class Admin {
 			81
 		);
 		add_submenu_page( self::PAGE, __( 'Publish', 'stillpress' ), __( 'Publish', 'stillpress' ), Capabilities::PUBLISH, self::PAGE, array( PublishPage::class, 'render' ) );
-		add_submenu_page( self::PAGE, __( 'Static Site Settings', 'stillpress' ), __( 'Settings', 'stillpress' ), Capabilities::MANAGE, self::SETTINGS_PAGE, array( SettingsPage::class, 'render' ) );
+		self::$settings_hook = (string) add_submenu_page( self::PAGE, __( 'Static Site Settings', 'stillpress' ), __( 'Settings', 'stillpress' ), Capabilities::MANAGE, self::SETTINGS_PAGE, array( SettingsPage::class, 'render' ) );
 	}
 
 	/**
@@ -78,6 +85,12 @@ final class Admin {
 	 * @return void
 	 */
 	public static function assets( $hook ): void {
+		if ( '' !== self::$settings_hook && self::$settings_hook === $hook ) {
+			wp_enqueue_style( 'stillpress-admin', plugins_url( 'assets/css/admin.css', STILLPRESS_FILE ), array(), STILLPRESS_VERSION );
+			wp_enqueue_script( 'stillpress-settings', plugins_url( 'assets/js/settings.js', STILLPRESS_FILE ), array( 'wp-api-fetch', 'wp-i18n' ), STILLPRESS_VERSION, true );
+			wp_set_script_translations( 'stillpress-settings', 'stillpress' );
+			return;
+		}
 		if ( 'toplevel_page_' . self::PAGE !== $hook ) {
 			return;
 		}

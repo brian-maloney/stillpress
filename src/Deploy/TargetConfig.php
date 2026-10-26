@@ -47,6 +47,7 @@ final class TargetConfig {
 					'options'     => array(),
 					'description' => '',
 					'restricted'  => false,
+					'multiline'   => false,
 				),
 				$field
 			);
@@ -209,7 +210,8 @@ final class TargetConfig {
 					}
 					continue;
 				}
-				if ( ! isset( $fields[ $name ] ) || 'secret' === $fields[ $name ]['type'] ) {
+				// Secrets never live here; an empty value means "use the default", so it isn't stored either.
+				if ( ! isset( $fields[ $name ] ) || 'secret' === $fields[ $name ]['type'] || '' === $value || null === $value ) {
 					continue;
 				}
 				$clean = self::clean( $fields[ $name ], $value );
@@ -237,11 +239,11 @@ final class TargetConfig {
 	/**
 	 * Validates one non-secret value.
 	 *
-	 * @param array<string,mixed> $def   Field definition.
+	 * @param array<string,mixed> $def   Field definition (from fields()).
 	 * @param mixed               $value Raw value.
 	 * @return string|bool|null Clean value, or null when invalid.
 	 */
-	private static function clean( array $def, $value ) {
+	public static function clean( array $def, $value ) {
 		if ( 'bool' === $def['type'] ) {
 			if ( is_bool( $value ) ) {
 				return $value;

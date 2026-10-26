@@ -79,6 +79,7 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 			'private_key'            => array(
 				'label'       => __( 'Private key', 'stillpress' ),
 				'type'        => 'secret',
+				'multiline'   => true,
 				'description' => __( 'OpenSSH or PEM format. Preferred over a password.', 'stillpress' ),
 			),
 			'private_key_passphrase' => array(

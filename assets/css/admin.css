@@ -89,3 +89,30 @@
 .stillpress .stillpress-error {
 	color: #d63638;
 }
+
+/* Settings: one deploy target's fields, nested inside the "Where to publish" table. */
+.stillpress-settings .stillpress-target-fields {
+	margin-top: 0;
+}
+
+.stillpress-settings .stillpress-target-fields th {
+	padding-left: 0;
+	width: 180px;
+}
+
+.stillpress-settings .stillpress-required {
+	color: #646970;
+	font-weight: 400;
+}
+
+.stillpress-settings .stillpress-check-result.is-ok {
+	color: #00a32a;
+}
+
+.stillpress-settings .stillpress-check-result.is-error {
+	color: #d63638;
+}
+
+.stillpress-settings tr[hidden] {
+	display: none;
+}

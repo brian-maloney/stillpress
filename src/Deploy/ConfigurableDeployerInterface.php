@@ -20,6 +20,7 @@ namespace Stillpress\Deploy;
  * - `pattern`     A PCRE a text value must match (whole value).
  * - `options`     For select: value => label.
  * - `description` Help text.
+ * - `multiline`   For secret fields: the form shows a textarea (private keys) instead of a password box.
  * - `restricted`  True for values that point the server at a host or path. In multisite only a super admin may
  *                 change them (threat T13), like the local folder path.
  *

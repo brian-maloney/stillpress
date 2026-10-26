@@ -54,7 +54,21 @@ final class RestPermissionsTest extends \WP_UnitTestCase {
 			array( 'GET', '/posts/{post}' ),
 			array( 'POST', '/posts/{post}/publish' ),
 			array( 'GET', '/health/loopback' ),
+			array( 'POST', '/targets/s3/check' ),
 		);
+	}
+
+	public function test_target_check_needs_manage_and_says_what_is_missing(): void {
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		$this->assertSame( 403, $this->request( 'POST', '/targets/sftp/check' )->get_status(), 'Publishing is not managing.' );
+
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		$response = $this->request( 'POST', '/targets/sftp/check' );
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertFalse( $response->get_data()['ok'] );
+		$this->assertStringContainsString( 'Host', $response->get_data()['message'] );
+		$this->assertSame( 404, $this->request( 'POST', '/targets/nonsense/check' )->get_status() );
+		$this->assertTrue( $this->request( 'POST', '/targets/zip/check' )->get_data()['ok'], 'Targets without settings report their problem() only.' );
 	}
 
 	public function test_editor_can_publish_but_not_run_health_checks(): void {

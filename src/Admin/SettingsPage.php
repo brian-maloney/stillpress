@@ -7,9 +7,13 @@
 
 namespace Stillpress\Admin;
 
+use Stillpress\Deploy\ConfigurableDeployerInterface;
+use Stillpress\Deploy\DeployerInterface;
 use Stillpress\Deploy\LocalDirectory;
 use Stillpress\Deploy\Registry;
+use Stillpress\Deploy\TargetConfig;
 use Stillpress\Security\Capabilities;
+use Stillpress\Security\Secrets;
 use Stillpress\Security\TargetPolicy;
 use Stillpress\Support\Settings;
 
@@ -18,6 +22,10 @@ use Stillpress\Support\Settings;
  *
  * Filesystem paths and the loopback address are only editable by users who can change server configuration: on
  * multisite that means super admins (threat T5/T13). Settings pinned in wp-config.php are shown read-only.
+ *
+ * Each configurable deploy target gets a panel of its fields. Secret fields are write-only (threat T17): the form
+ * never contains a saved secret, an empty box keeps it, and submitted secrets go to Secrets, never into the
+ * settings array. Restricted fields (hosts, endpoints, remote folders) follow the path rule above.
  */
 final class SettingsPage {
 
@@ -30,6 +38,13 @@ final class SettingsPage {
 	 */
 	public static function register(): void {
 		add_action( 'admin_init', array( self::class, 'settings' ) );
+		// options.php asks for manage_options unless told otherwise; the screen itself needs stillpress_manage.
+		add_filter(
+			'option_page_capability_' . self::GROUP,
+			static function () {
+				return Capabilities::MANAGE;
+			}
+		);
 	}
 
 	/**
@@ -66,6 +81,21 @@ final class SettingsPage {
 
 		self::field( 'target', __( 'Destination', 'stillpress' ), 'stillpress_deploy', array( self::class, 'field_target' ) );
 		self::field( 'local_path', __( 'Folder', 'stillpress' ), 'stillpress_deploy', array( self::class, 'field_local_path' ) );
+		foreach ( Registry::instance()->all() as $id => $deployer ) {
+			if ( $deployer instanceof ConfigurableDeployerInterface ) {
+				add_settings_field(
+					'stillpress_target_' . $id,
+					esc_html( $deployer->label() ),
+					array( self::class, 'field_target_panel' ),
+					Admin::SETTINGS_PAGE,
+					'stillpress_deploy',
+					array(
+						'deployer' => $deployer,
+						'class'    => 'stillpress-target-row stillpress-target-row-' . $id,
+					)
+				);
+			}
+		}
 		self::field( 'public_url', __( 'Public address', 'stillpress' ), 'stillpress_deploy', array( self::class, 'field_public_url' ) );
 		self::field( 'auto_publish', __( 'Automatic publishing', 'stillpress' ), 'stillpress_publishing', array( self::class, 'field_auto_publish' ) );
 		self::field( 'full_rebuild', __( 'Full rebuild', 'stillpress' ), 'stillpress_publishing', array( self::class, 'field_full_rebuild' ) );
@@ -111,18 +141,15 @@ final class SettingsPage {
 		if ( $from_form && ! self::can_edit_paths() ) {
 			$input['local_path'] = $current['local_path'] ?? '';
 			$input['connect_to'] = $current['connect_to'] ?? '';
-			// Endpoints and hosts of deploy targets follow the same rule as filesystem paths.
-			$restricted = isset( $input['targets'] ) && is_array( $input['targets'] ) ? \Stillpress\Deploy\TargetConfig::restricted_fields() : array();
-			foreach ( $restricted as $id => $names ) {
-				foreach ( $names as $name ) {
-					if ( isset( $current['targets'][ $id ][ $name ] ) ) {
-						$input['targets'][ $id ][ $name ] = $current['targets'][ $id ][ $name ];
-					} else {
-						unset( $input['targets'][ $id ][ $name ] );
-					}
-				}
-			}
 		}
+		if ( $from_form ) {
+			$input['targets'] = self::submitted_targets( $input['targets'] ?? array(), $current['targets'] ?? array() );
+			self::save_secrets( $input['secrets'] ?? array(), $input['secrets_clear'] ?? array() );
+		} elseif ( isset( $input['targets'] ) && is_array( $input['targets'] ) && ! self::can_edit_paths() && ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			// Code running for a less-privileged user still can't move restricted fields.
+			$input['targets'] = self::keep_restricted( $input['targets'], $current['targets'] ?? array() );
+		}
+		unset( $input['secrets'], $input['secrets_clear'] );
 		$clean = Settings::sanitize( array_merge( Settings::defaults(), $current, $input ) );
 
 		if ( 'local' === $clean['target'] && '' !== $clean['local_path'] ) {
@@ -136,6 +163,98 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Merges submitted target fields over the stored ones, field by field, so fields that weren't submitted (disabled
+	 * inputs, other plugins' targets) keep their values. Invalid values keep the stored value and add a notice.
+	 *
+	 * @param mixed                             $submitted Submitted `targets` (deployer ID => field => value).
+	 * @param array<string,array<string,mixed>> $current   Stored `targets`.
+	 * @return array<string,array<string,mixed>>
+	 */
+	private static function submitted_targets( $submitted, array $current ): array {
+		$out       = $current;
+		$submitted = is_array( $submitted ) ? $submitted : array();
+		$may_edit  = self::can_edit_paths();
+		foreach ( Registry::instance()->all() as $id => $deployer ) {
+			if ( ! isset( $submitted[ $id ] ) || ! is_array( $submitted[ $id ] ) ) {
+				continue;
+			}
+			foreach ( TargetConfig::fields( $deployer ) as $name => $def ) {
+				if ( 'secret' === $def['type'] || ! array_key_exists( $name, $submitted[ $id ] ) ) {
+					continue;
+				}
+				if ( ( $def['restricted'] && ! $may_edit ) || Secrets::SOURCE_NONE !== Secrets::pinned( $id, $name )[0] ) {
+					continue;
+					// Locked: keep what is stored.
+				}
+				$raw = $submitted[ $id ][ $name ];
+				if ( 'bool' === $def['type'] ) {
+					$out[ $id ][ $name ] = ! empty( $raw ) && '0' !== $raw;
+					continue;
+				}
+				$raw = is_scalar( $raw ) ? trim( (string) $raw ) : '';
+				if ( '' === $raw ) {
+					unset( $out[ $id ][ $name ] );
+					continue;
+				}
+				$clean = TargetConfig::clean( $def, $raw );
+				if ( null === $clean ) {
+					/* translators: 1: target name, 2: field label. */
+					add_settings_error( Settings::OPTION, 'stillpress_' . $id . '_' . $name, sprintf( __( '%1$s: that is not a valid %2$s. The previous value was kept.', 'stillpress' ), $deployer->label(), $def['label'] ) );
+					continue;
+				}
+				$out[ $id ][ $name ] = $clean;
+			}//end foreach
+		}//end foreach
+		return $out;
+	}
+
+	/**
+	 * Restores restricted fields to their stored values.
+	 *
+	 * @param array<string,mixed>               $targets Proposed `targets`.
+	 * @param array<string,array<string,mixed>> $current Stored `targets`.
+	 * @return array<string,mixed>
+	 */
+	private static function keep_restricted( array $targets, array $current ): array {
+		foreach ( TargetConfig::restricted_fields() as $id => $names ) {
+			foreach ( $names as $name ) {
+				if ( isset( $current[ $id ][ $name ] ) ) {
+					$targets[ $id ][ $name ] = $current[ $id ][ $name ];
+				} elseif ( isset( $targets[ $id ] ) && is_array( $targets[ $id ] ) ) {
+					unset( $targets[ $id ][ $name ] );
+				}
+			}
+		}
+		return $targets;
+	}
+
+	/**
+	 * Stores submitted secrets. An empty box keeps the saved value; the "remove" box deletes it.
+	 *
+	 * @param mixed $secrets Submitted secrets (deployer ID => field => value).
+	 * @param mixed $clear   Fields to delete (deployer ID => field => "1").
+	 * @return void
+	 */
+	private static function save_secrets( $secrets, $clear ): void {
+		$secrets = is_array( $secrets ) ? $secrets : array();
+		$clear   = is_array( $clear ) ? $clear : array();
+		foreach ( Registry::instance()->all() as $id => $deployer ) {
+			foreach ( TargetConfig::fields( $deployer ) as $name => $def ) {
+				if ( 'secret' !== $def['type'] || Secrets::SOURCE_NONE !== Secrets::pinned( $id, $name )[0] ) {
+					continue;
+				}
+				// Secrets are taken as typed: passwords may contain any character. Only line endings are normalized.
+				$value = isset( $secrets[ $id ][ $name ] ) && is_string( $secrets[ $id ][ $name ] ) ? str_replace( "\r\n", "\n", $secrets[ $id ][ $name ] ) : '';
+				if ( '' !== trim( $value ) ) {
+					Secrets::set( $id, $name, $def['multiline'] ? trim( $value ) . "\n" : $value );
+				} elseif ( ! empty( $clear[ $id ][ $name ] ) ) {
+					Secrets::delete( $id, $name );
+				}
+			}
+		}
+	}
+
+	/**
 	 * Renders the form.
 	 *
 	 * @return void
@@ -144,7 +263,7 @@ final class SettingsPage {
 		if ( ! current_user_can( Capabilities::MANAGE ) ) {
 			return;
 		}
-		echo '<div class="wrap"><h1>' . esc_html__( 'Static Site Settings', 'stillpress' ) . '</h1>';
+		echo '<div class="wrap stillpress-settings"><h1>' . esc_html__( 'Static Site Settings', 'stillpress' ) . '</h1>';
 		// Pages outside the Settings menu must print the Settings API notices themselves.
 		settings_errors();
 		echo '<form method="post" action="options.php">';
@@ -388,5 +507,167 @@ final class SettingsPage {
 			(int) Settings::get( 'max_urls' )
 		);
 		echo '<p class="description">' . esc_html__( 'Stops the crawler from following links forever, for example on infinite calendars.', 'stillpress' ) . '</p>';
+	}
+
+	/**
+	 * One target's settings, as a nested table. The screen's script shows only the selected target's panel.
+	 *
+	 * @param array{deployer:DeployerInterface} $args Field arguments.
+	 * @return void
+	 */
+	public static function field_target_panel( array $args ): void {
+		$deployer = $args['deployer'];
+		$id       = $deployer->id();
+		echo '<div class="stillpress-target-panel" data-stillpress-target="' . esc_attr( $id ) . '">';
+		echo '<table class="form-table stillpress-target-fields" role="presentation"><tbody>';
+		foreach ( TargetConfig::fields( $deployer ) as $name => $def ) {
+			$input_id = 'stillpress-target-' . $id . '-' . str_replace( '_', '-', $name );
+			echo '<tr><th scope="row"><label for="' . esc_attr( $input_id ) . '">' . esc_html( $def['label'] ) . '</label>';
+			if ( $def['required'] ) {
+				echo ' <span class="stillpress-required">' . esc_html__( '(required)', 'stillpress' ) . '</span>';
+			}
+			echo '</th><td>';
+			self::target_input( $deployer, $name, $def, $input_id );
+			echo '</td></tr>';
+		}
+		echo '</tbody></table>';
+		printf(
+			'<p><button type="button" class="button" data-stillpress-check="%s">%s</button> <span class="stillpress-check-result" data-stillpress-check-result="%s" role="status" aria-live="polite"></span></p>',
+			esc_attr( $id ),
+			esc_html__( 'Test connection', 'stillpress' ),
+			esc_attr( $id )
+		);
+		echo '<p class="description">' . esc_html__( 'The test uses the saved settings. Save your changes first.', 'stillpress' ) . '</p>';
+		echo '</div>';
+	}
+
+	/**
+	 * One target field's input, with its notes.
+	 *
+	 * @param DeployerInterface   $deployer Deployer.
+	 * @param string              $name     Field name.
+	 * @param array<string,mixed> $def      Field definition.
+	 * @param string              $input_id Element ID.
+	 * @return void
+	 */
+	private static function target_input( DeployerInterface $deployer, string $name, array $def, string $input_id ): void {
+		$id       = $deployer->id();
+		$source   = TargetConfig::source( $deployer, $name );
+		$pinned   = in_array( $source, array( Secrets::SOURCE_CONSTANT, Secrets::SOURCE_ENVIRONMENT ), true );
+		$locked   = $pinned || ( $def['restricted'] && ! self::can_edit_paths() );
+		$disabled = disabled( $locked, true, false );
+		$describe = $input_id . '-description';
+
+		if ( 'secret' === $def['type'] ) {
+			$field = Settings::OPTION . '[secrets][' . $id . '][' . $name . ']';
+			$saved = Secrets::SOURCE_STORED === $source;
+			// A saved secret is never printed: the box is always empty, and empty means "keep".
+			if ( $def['multiline'] ) {
+				printf(
+					'<textarea class="large-text code" rows="4" id="%s" name="%s" autocomplete="off" spellcheck="false" aria-describedby="%s" placeholder="%s" %s></textarea>',
+					esc_attr( $input_id ),
+					esc_attr( $field ),
+					esc_attr( $describe ),
+					esc_attr( $saved ? __( 'Saved. Leave empty to keep it.', 'stillpress' ) : '' ),
+					$disabled // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- disabled() returns a fixed attribute.
+				);
+			} else {
+				printf(
+					'<input type="password" class="regular-text" id="%s" name="%s" value="" autocomplete="new-password" spellcheck="false" aria-describedby="%s" placeholder="%s" %s>',
+					esc_attr( $input_id ),
+					esc_attr( $field ),
+					esc_attr( $describe ),
+					esc_attr( $saved ? __( 'Saved. Leave empty to keep it.', 'stillpress' ) : '' ),
+					$disabled // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- disabled() returns a fixed attribute.
+				);
+			}
+			echo '<p class="description" id="' . esc_attr( $describe ) . '">';
+			echo esc_html( self::source_note( $id, $name, $source ) );
+			if ( '' !== $def['description'] ) {
+				echo ' ' . esc_html( $def['description'] );
+			}
+			echo '</p>';
+			if ( $saved || Secrets::SOURCE_UNREADABLE === $source ) {
+				printf(
+					'<label><input type="checkbox" name="%s" value="1"> %s</label>',
+					esc_attr( Settings::OPTION . '[secrets_clear][' . $id . '][' . $name . ']' ),
+					esc_html__( 'Remove the saved value', 'stillpress' )
+				);
+			}
+			return;
+		}//end if
+
+		$field = Settings::OPTION . '[targets][' . $id . '][' . $name . ']';
+		$value = TargetConfig::value( $deployer, $name );
+		if ( 'bool' === $def['type'] ) {
+			if ( ! $locked ) {
+				// An unchecked box isn't submitted; the hidden zero says "off" instead of "not on this form".
+				echo '<input type="hidden" name="' . esc_attr( $field ) . '" value="0">';
+			}
+			printf(
+				'<label><input type="checkbox" id="%s" name="%s" value="1" aria-describedby="%s" %s %s> %s</label>',
+				esc_attr( $input_id ),
+				esc_attr( $field ),
+				esc_attr( $describe ),
+				checked( (bool) $value, true, false ),
+				$disabled, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- disabled() returns a fixed attribute.
+				esc_html( $def['label'] )
+			);
+		} elseif ( 'select' === $def['type'] ) {
+			echo '<select id="' . esc_attr( $input_id ) . '" name="' . esc_attr( $field ) . '" aria-describedby="' . esc_attr( $describe ) . '" ' . $disabled . '>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- disabled() returns a fixed attribute.
+			foreach ( (array) $def['options'] as $option => $label ) {
+				echo '<option value="' . esc_attr( (string) $option ) . '"' . selected( (string) $value, (string) $option, false ) . '>' . esc_html( (string) $label ) . '</option>';
+			}
+			echo '</select>';
+		} else {
+			$stored = Secrets::SOURCE_STORED === $source || $pinned;
+			printf(
+				'<input type="text" class="regular-text code" id="%s" name="%s" value="%s" placeholder="%s" spellcheck="false" aria-describedby="%s" %s>',
+				esc_attr( $input_id ),
+				esc_attr( $field ),
+				esc_attr( $stored ? (string) $value : '' ),
+				esc_attr( (string) $def['default'] ),
+				esc_attr( $describe ),
+				$disabled // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- disabled() returns a fixed attribute.
+			);
+		}//end if
+		$notes = array();
+		if ( $pinned ) {
+			$notes[] = self::source_note( $id, $name, $source );
+		} elseif ( $def['restricted'] && ! self::can_edit_paths() ) {
+			$notes[] = __( 'Only a network administrator can change this.', 'stillpress' );
+		}
+		if ( '' !== $def['description'] ) {
+			$notes[] = $def['description'];
+		}
+		if ( $notes ) {
+			echo '<p class="description" id="' . esc_attr( $describe ) . '">' . esc_html( implode( ' ', $notes ) ) . '</p>';
+		}
+	}
+
+	/**
+	 * Says where a value comes from, without showing it.
+	 *
+	 * @param string $id     Deployer ID.
+	 * @param string $name   Field name.
+	 * @param string $source A Secrets::SOURCE_* or TargetConfig::SOURCE_DEFAULT value.
+	 * @return string
+	 */
+	private static function source_note( string $id, string $name, string $source ): string {
+		$constant = Secrets::name( $id, $name );
+		switch ( $source ) {
+			case Secrets::SOURCE_CONSTANT:
+				/* translators: %s: constant name. */
+				return sprintf( __( 'Set by %s in wp-config.php.', 'stillpress' ), $constant );
+			case Secrets::SOURCE_ENVIRONMENT:
+				/* translators: %s: environment variable name. */
+				return sprintf( __( 'Set by the %s environment variable.', 'stillpress' ), $constant );
+			case Secrets::SOURCE_STORED:
+				return __( 'A value is saved (encrypted).', 'stillpress' );
+			case Secrets::SOURCE_UNREADABLE:
+				return __( 'The saved value can no longer be read because the security keys in wp-config.php changed. Enter it again.', 'stillpress' );
+			default:
+				return __( 'Not set.', 'stillpress' );
+		}
 	}
 }

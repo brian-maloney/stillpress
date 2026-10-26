@@ -74,6 +74,37 @@ final class MultisiteTest extends \WP_UnitTestCase {
 		$this->assertSame( 'deploy', \Stillpress\Deploy\TargetConfig::value( $sftp, 'username' ), 'Unrestricted fields stay editable.' );
 	}
 
+	public function test_site_admin_form_cannot_move_restricted_target_fields(): void {
+		$super = self::factory()->user->create();
+		grant_super_admin( $super );
+		wp_set_current_user( $super );
+		$sftp = \Stillpress\Deploy\Registry::instance()->get( 'sftp' );
+		\Stillpress\Deploy\TargetConfig::set( $sftp, 'host', 'deploy.example.org' );
+
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		get_userdata( $admin )->add_cap( Capabilities::MANAGE );
+		wp_set_current_user( $admin );
+		$_POST['option_page'] = SettingsPage::GROUP; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Simulated options.php submission.
+		$input                = array(
+			'targets' => array(
+				'sftp' => array(
+					'host'     => 'internal.example',
+					'username' => 'deploy',
+				),
+			),
+		);
+		update_option( Settings::OPTION, SettingsPage::sanitize( $input ) );
+		unset( $_POST['option_page'] );
+		$this->assertSame( 'deploy.example.org', \Stillpress\Deploy\TargetConfig::value( $sftp, 'host' ) );
+		$this->assertSame( 'deploy', \Stillpress\Deploy\TargetConfig::value( $sftp, 'username' ) );
+
+		ob_start();
+		SettingsPage::field_target_panel( array( 'deployer' => $sftp ) );
+		$html = (string) ob_get_clean();
+		$this->assertMatchesRegularExpression( '#id="stillpress-target-sftp-host"[^>]*disabled#', $html );
+		$this->assertStringContainsString( 'Only a network administrator can change this.', $html );
+	}
+
 	public function test_site_admins_cannot_change_server_paths(): void {
 		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		get_userdata( $admin )->add_cap( Capabilities::MANAGE );

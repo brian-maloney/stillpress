@@ -557,7 +557,7 @@ final class Command {
 			if ( null !== $problem ) {
 				WP_CLI::error( $problem );
 			}
-			WP_CLI::success( sprintf( '%s is ready.', $deployer->label() ) );
+			WP_CLI::success( sprintf( 'Target "%s" is ready to publish.', $id ) );
 			return;
 		}
 		$field = (string) ( $args[2] ?? '' );

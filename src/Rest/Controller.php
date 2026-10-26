@@ -135,6 +135,18 @@ final class Controller {
 		);
 		register_rest_route(
 			self::NAMESPACE,
+			'/targets/(?P<id>[a-z0-9][a-z0-9\-]{0,39})/check',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'check_target' ),
+				'permission_callback' => static function () {
+					return current_user_can( Capabilities::MANAGE );
+				},
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/health/loopback',
 			array(
 				'methods'             => 'GET',
@@ -252,5 +264,26 @@ final class Controller {
 	 */
 	public function health_loopback(): \WP_REST_Response {
 		return rest_ensure_response( \Stillpress\Admin\SiteHealth::format( 'stillpress_loopback', ( new HealthChecks() )->loopback() ) );
+	}
+
+	/**
+	 * Runs a deploy target's connection check with its saved settings. The answer is plain text from the deployer;
+	 * secrets in it are scrubbed.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function check_target( \WP_REST_Request $request ) {
+		$deployer = \Stillpress\Deploy\Registry::instance()->get( (string) $request['id'] );
+		if ( null === $deployer ) {
+			return new \WP_Error( 'stillpress_unknown_target', __( 'Unknown deploy target.', 'stillpress' ), array( 'status' => 404 ) );
+		}
+		$problem = $deployer instanceof \Stillpress\Deploy\ConfigurableDeployerInterface ? $deployer->check_connection() : $deployer->problem();
+		return rest_ensure_response(
+			array(
+				'ok'      => null === $problem,
+				'message' => null === $problem ? __( 'Connected. Ready to publish here.', 'stillpress' ) : \Stillpress\Security\Redactor::scrub( $problem ),
+			)
+		);
 	}
 }

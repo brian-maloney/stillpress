@@ -156,7 +156,14 @@ from every log line. `wp stillpress secret list|set|delete` manages stored value
 
 ## WordPress-native UX
 - A top-level menu **Static Site**, with a *Publish* page (status, Publish / Full rebuild, history, log, changeset preview) and a
-  *Settings* page (Settings API).
+  *Settings* page (Settings API; `option_page_capability_stillpress` lets `stillpress_manage` save it, not only `manage_options`).
+  Every configurable deploy target gets a panel generated from its `fields()`; a script shows only the selected destination's
+  panel (without JavaScript all panels show and the form still works). Fields merge one by one over the stored values, so
+  disabled inputs and other targets keep theirs; an invalid value keeps the old one and adds a notice. Secret boxes are
+  always empty: an empty box keeps the saved secret, "Remove the saved value" deletes it, and submitted secrets go straight
+  to `Secrets` (`stillpress_settings[secrets]` never reaches the option). Fields pinned by a constant or environment variable,
+  and restricted fields for users who can't edit server paths, render disabled with a note. *Test connection* calls
+  `POST stillpress/v1/targets/<id>/check` (needs `stillpress_manage`), which runs `check_connection()` on the saved settings.
 - Admin bar node: static status (up to date / N pending / building x%), refreshed through the Heartbeat API.
 - Editor integration: a pinned `PluginSidebar` header icon (beside Publish), a `PluginPostStatusInfo` row with status and a "Publish to static" button, and a `PluginPostPublishPanel`. Classic editor: `post_submitbox_misc_actions`. (The block editor has no SlotFill directly next to the Publish button.) REST through `apiFetch` with the `wp_rest` nonce.
 - Site Health tests: loopback reachable, recorder header present (page-cache bypass), pretty permalinks, cache and target writable,
