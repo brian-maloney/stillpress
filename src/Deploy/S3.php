@@ -619,12 +619,22 @@ final class S3 implements ConfigurableDeployerInterface, ResumableDeployerInterf
 			'webmanifest' => 'application/manifest+json',
 			'map'         => 'application/json',
 		);
-		$base = basename( $path );
-		$dot  = strrpos( $base, '.' );
-		$ext  = false === $dot ? '' : strtolower( substr( $base, $dot + 1 ) );
+		// Binary types WordPress's MIME list doesn't know; theme fonts are the common case.
+		$binary = array(
+			'woff2' => 'font/woff2',
+			'woff'  => 'font/woff',
+			'ttf'   => 'font/ttf',
+			'otf'   => 'font/otf',
+		);
+		$base   = basename( $path );
+		$dot    = strrpos( $base, '.' );
+		$ext    = false === $dot ? '' : strtolower( substr( $base, $dot + 1 ) );
 		if ( '' === $ext ) {
 			return 'text/plain; charset=utf-8';
 			// _redirects and similar.
+		}
+		if ( isset( $binary[ $ext ] ) ) {
+			return $binary[ $ext ];
 		}
 		if ( isset( $text[ $ext ] ) ) {
 			return $text[ $ext ] . ( 0 === strpos( $text[ $ext ], 'image/' ) ? '' : '; charset=utf-8' );

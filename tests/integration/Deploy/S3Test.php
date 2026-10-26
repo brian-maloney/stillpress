@@ -91,6 +91,17 @@ final class S3Test extends \WP_UnitTestCase {
 		$this->assertStringNotContainsString( self::SECRET, (string) wp_json_encode( $this->s3->requests ) );
 	}
 
+	public function test_content_types(): void {
+		$this->assertSame( 'text/html; charset=utf-8', S3::content_type( 'about/index.html' ) );
+		$this->assertSame( 'application/xml; charset=utf-8', S3::content_type( 'wp-sitemap.xml' ) );
+		$this->assertSame( 'image/svg+xml', S3::content_type( 'logo.svg' ) );
+		$this->assertSame( 'font/woff2', S3::content_type( 'fonts/Manrope-VariableFont_wght.woff2' ) );
+		$this->assertSame( 'font/ttf', S3::content_type( 'fonts/x.TTF' ) );
+		$this->assertSame( 'image/webp', S3::content_type( 'uploads/photo.webp' ), 'From WordPress\'s list.' );
+		$this->assertSame( 'text/plain; charset=utf-8', S3::content_type( '_redirects' ) );
+		$this->assertSame( 'application/octet-stream', S3::content_type( 'archive.unknownext' ) );
+	}
+
 	public function test_unchanged_files_are_not_sent_again(): void {
 		$this->deploy();
 		$this->s3->requests = array();
