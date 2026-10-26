@@ -53,7 +53,8 @@ jobs:
       - name: Start the test SFTP server
         run: npm run sftp:start
       - name: SFTP tests must run, not skip
-        run: npx wp-env run tests-cli php -r 'exit( @fsockopen( "sftp.test", 22, $n, $s, 5 ) ? 0 : 1 );'
+        run: |
+          npx wp-env run tests-cli php -r 'exit( @fsockopen( "sftp.test", 22, $n, $s, 5 ) ? 0 : 1 );'
       - run: npm run test:unit
       - run: npm run test:integration
       - if: ${{ matrix.multisite }}
