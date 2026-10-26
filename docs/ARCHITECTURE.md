@@ -116,7 +116,7 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through
-`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation), **SFTP**, **Git** and **Netlify**.
+`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation), **SFTP**, **Git**, **Netlify** and **Cloudflare** (Workers static assets).
 - Local directory applies the changeset with an atomic write per file (temp file + rename). It only deletes files listed in its own
   manifest, and requires a marker file `.stillpress-target` in the target directory.
 - ZIP is built from the cache and downloaded through an authenticated, nonce-checked admin endpoint (streamed). There's no public URL for it.
@@ -158,6 +158,13 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   deploy's ID and a fingerprint of its file list are saved, so a deploy interrupted while Netlify prepares it or mid-upload
   resumes in the next slice; an expired or failed one is replaced. Files with `#` or `?` in their path are skipped, as
   Netlify requires.
+- **Cloudflare** (D17) publishes an assets-only Worker through the documented direct upload for Workers static assets:
+  a manifest of path → {hash, size} (hash: first 32 hex characters of SHA-256 over the base64 contents plus the extension,
+  as in Cloudflare's example), multipart uploads of the buckets Cloudflare asks for, then a Worker upload with only a
+  metadata part (`assets.jwt`, `html_handling: auto-trailing-slash`, `not_found_handling: 404-page`). A Worker of that name
+  that Stillpress didn't create is refused unless replacing is on. Unchanged sites make no calls; the one-hour upload
+  session and its remaining buckets are saved so a deploy resumes. Cloudflare Pages projects publish through the Git
+  deployer instead (Pages builds from the branch).
 - **TLS for remote targets.** `RequestsTransport` verifies certificates against WordPress's CA bundle (or a bundle passed
   in, which only tests do) on every handle. Requests applies its `verify` option to single requests only, so the bundle is
   set through the `curl.before_request` hook as well.

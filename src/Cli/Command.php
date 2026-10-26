@@ -511,6 +511,11 @@ final class Command {
 	 *     $ wp stillpress target set netlify site_id 0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b
 	 *     $ printf %s "$NETLIFY_TOKEN" | wp stillpress secret set netlify token
 	 *
+	 *     # Cloudflare: an assets-only Worker in your account.
+	 *     $ wp stillpress target set cloudflare account_id 0123456789abcdef0123456789abcdef
+	 *     $ wp stillpress target set cloudflare worker_name my-site
+	 *     $ printf %s "$CLOUDFLARE_API_TOKEN" | wp stillpress secret set cloudflare api_token
+	 *
 	 * @param string[]             $args  Positional arguments.
 	 * @param array<string,string> $assoc Options.
 	 * @return void

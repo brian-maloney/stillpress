@@ -185,3 +185,18 @@ Requests over 30 seconds are cut off, so deploys are created `async` and polled 
 and a fingerprint of its file list are saved, and the next slice resumes it rather than creating another (which would
 spend another deploy). Serverless functions aren't uploaded: a static export has none.
 
+## D17. Cloudflare through Workers static assets, not Pages direct upload
+
+Cloudflare documents only the last step of a Pages direct upload (create a deployment from a manifest of "uploaded
+content hashes"). The upload steps (`upload-token`, `check-missing`, `assets/upload`, `upsert-hashes`) exist only in
+`wrangler`'s source, and its content hash is BLAKE3, which PHP lacks: we would depend on undocumented endpoints and
+either a new dependency or our own hash implementation. Workers static assets has a documented direct upload, its
+documentation doesn't fix a hash algorithm, and Cloudflare's own example uses truncated SHA-256, so the deployer uses
+that with PHP's built-in `hash()`. Where the documentation is ambiguous (its prose says multipart, its example sends
+JSON) we follow `wrangler`'s implementation: one multipart part per file, named by its hash, with base64 contents and the
+served content type (`application/null` for none). An assets-only Worker is uploaded with only a metadata part, again as
+`wrangler` does.
+
+Existing Cloudflare Pages projects can keep Pages by connecting it to the repository the Git deployer pushes to. Revisit
+if Cloudflare documents the Pages upload API, or if it changes or starts verifying the Workers asset hash.
+

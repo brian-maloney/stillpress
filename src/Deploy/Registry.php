@@ -41,6 +41,7 @@ final class Registry {
 			self::$instance->register( new Sftp() );
 			self::$instance->register( new Git() );
 			self::$instance->register( new Netlify() );
+			self::$instance->register( new Cloudflare() );
 
 			/**
 			 * Fires once so extensions can register deployers.
