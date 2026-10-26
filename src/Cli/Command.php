@@ -453,6 +453,66 @@ final class Command {
 	}
 
 	/**
+	 * Shows when changes are published and when the next full rebuild runs, in the site's timezone.
+	 *
+	 * Change the schedule with `wp stillpress settings set`: publish_mode (immediate, scheduled or manual),
+	 * publish_times, publish_days, full_rebuild (off, daily or weekly), full_rebuild_time and full_rebuild_day.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--format=<format>]
+	 * : Output format.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - json
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     $ wp stillpress settings set publish_mode scheduled
+	 *     $ wp stillpress settings set publish_times "09:00, 17:30"
+	 *     $ wp stillpress settings set publish_days "mon,tue,wed,thu,fri"
+	 *     $ wp stillpress settings set full_rebuild_time 02:30
+	 *     $ wp stillpress schedule
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function schedule( $args, $assoc ): void {
+		$settings = \Stillpress\Support\Settings::all();
+		$next     = \Stillpress\Build\Queue::next_runs();
+		$format   = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+		$when     = static function ( $time ) use ( $format ) {
+			return null === $time ? '' : wp_date( $format, (int) $time );
+		};
+		$modes    = array(
+			'immediate' => 'a minute after changes are saved',
+			'scheduled' => 'at ' . implode( ', ', $settings['publish_times'] ) . ' on ' . implode( ', ', $settings['publish_days'] ),
+			'manual'    => 'only when started by hand',
+		);
+		$rebuild  = 'off' === $settings['full_rebuild'] ? 'off' : $settings['full_rebuild'] . ' at ' . $settings['full_rebuild_time'] . ( 'weekly' === $settings['full_rebuild'] ? ' on ' . $settings['full_rebuild_day'] : '' );
+		$rows     = array(
+			array(
+				'job'      => 'publish changes',
+				'schedule' => $modes[ $settings['publish_mode'] ] ?? $settings['publish_mode'],
+				'next'     => $when( $next[ \Stillpress\Build\Queue::WINDOW_HOOK ] ),
+			),
+			array(
+				'job'      => 'full rebuild',
+				'schedule' => $rebuild,
+				'next'     => $when( $next[ \Stillpress\Build\Queue::SCHEDULED_HOOK ] ),
+			),
+		);
+		WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'job', 'schedule', 'next' ) );
+		if ( 'table' === ( $assoc['format'] ?? 'table' ) ) {
+			WP_CLI::log( sprintf( 'Times are in the site\'s timezone (%s).', wp_timezone_string() ) );
+		}
+	}
+
+	/**
 	 * Shows and changes the settings of deploy targets.
 	 *
 	 * Every field can also be pinned with a constant or environment variable named STILLPRESS_<TARGET>_<FIELD>.

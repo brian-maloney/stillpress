@@ -200,3 +200,18 @@ served content type (`application/null` for none). An assets-only Worker is uplo
 Existing Cloudflare Pages projects can keep Pages by connecting it to the repository the Git deployer pushes to. Revisit
 if Cloudflare documents the Pages upload API, or if it changes or starts verifying the Workers asset hash.
 
+## D18. Schedules are local wall-clock times, re-armed as single actions
+
+"Publish at set times" means times people read on a clock: 09:00 should stay 09:00 after a daylight-saving change.
+The nightly full rebuild used one recurring Action Scheduler action every 86,400 seconds, anchored at 03:00 with the
+site's UTC offset at the moment it was scheduled, so after each clock change it ran an hour early or late, and stayed
+that way. Both schedules now compute their next run with `Build\Schedule` (pure, unit-tested across the 2026 European and
+US changes) in `wp_timezone()`, schedule it as a single action, and schedule the following run when it fires. A run
+that never got scheduled (a fatal error in a handler) is re-armed by `ensure_recurring()` on the next request, and
+existing recurring rebuilds from earlier versions are replaced the first time it runs.
+
+On the night clocks go forward, a time inside the skipped hour fires just after it (02:30 becomes 03:30); on the night
+they go back, a repeated time fires once. The publishing mode replaced the `auto_publish` switch: stored values and
+`settings set auto_publish` from scripts map to `immediate` or `manual`. In scheduled mode a publishing time with
+nothing pending starts no build, so frequent times cost nothing on quiet days.
+

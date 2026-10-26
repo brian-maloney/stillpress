@@ -97,7 +97,7 @@ final class SettingsPage {
 			}
 		}
 		self::field( 'public_url', __( 'Public address', 'stillpress' ), 'stillpress_deploy', array( self::class, 'field_public_url' ) );
-		self::field( 'auto_publish', __( 'Automatic publishing', 'stillpress' ), 'stillpress_publishing', array( self::class, 'field_auto_publish' ) );
+		self::field( 'publish_mode', __( 'Publish changes', 'stillpress' ), 'stillpress_publishing', array( self::class, 'field_publish_mode' ) );
 		self::field( 'full_rebuild', __( 'Full rebuild', 'stillpress' ), 'stillpress_publishing', array( self::class, 'field_full_rebuild' ) );
 		self::field( 'additional_urls', __( 'Extra addresses', 'stillpress' ), 'stillpress_content', array( self::class, 'field_additional_urls' ) );
 		self::field( 'exclude', __( 'Leave out', 'stillpress' ), 'stillpress_content', array( self::class, 'field_exclude' ) );
@@ -135,8 +135,7 @@ final class SettingsPage {
 		// applies to submissions of the settings form, which is the only place a less-privileged user can reach.
 		$from_form = isset( $_POST['option_page'] ) && self::GROUP === sanitize_key( wp_unslash( $_POST['option_page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- options.php verified the nonce.
 		if ( $from_form ) {
-			// An unchecked checkbox is simply missing from the submission.
-			$input['auto_publish'] = ! empty( $input['auto_publish'] );
+			$input = self::submitted_schedule( $input, $current );
 		}
 		if ( $from_form && ! self::can_edit_paths() ) {
 			$input['local_path'] = $current['local_path'] ?? '';
@@ -206,6 +205,38 @@ final class SettingsPage {
 			}//end foreach
 		}//end foreach
 		return $out;
+	}
+
+	/**
+	 * Checks the publishing times and weekdays from the form. Unchecked weekday boxes are simply missing from the
+	 * submission, so no boxes means "none"; an empty or invalid schedule keeps the stored one and says why.
+	 *
+	 * @param array<string,mixed> $input   Submitted values.
+	 * @param array<string,mixed> $current Stored values.
+	 * @return array<string,mixed>
+	 */
+	private static function submitted_schedule( array $input, array $current ): array {
+		$defaults = Settings::defaults();
+		if ( ! array_key_exists( 'publish_mode', $input ) ) {
+			return $input;
+		}
+		$times = \Stillpress\Build\Schedule::parse_times( $input['publish_times'] ?? '' );
+		$days  = \Stillpress\Build\Schedule::parse_days( $input['publish_days'] ?? array() );
+		if ( ! $times ) {
+			if ( 'scheduled' === $input['publish_mode'] ) {
+				add_settings_error( Settings::OPTION, 'stillpress_publish_times', __( 'Enter at least one publishing time, such as 09:00.', 'stillpress' ) );
+			}
+			$times = $current['publish_times'] ?? $defaults['publish_times'];
+		}
+		if ( ! $days ) {
+			if ( 'scheduled' === $input['publish_mode'] ) {
+				add_settings_error( Settings::OPTION, 'stillpress_publish_days', __( 'Choose at least one day to publish on.', 'stillpress' ) );
+			}
+			$days = $current['publish_days'] ?? $defaults['publish_days'];
+		}
+		$input['publish_times'] = $times;
+		$input['publish_days']  = $days;
+		return $input;
 	}
 
 	/**
@@ -358,18 +389,70 @@ final class SettingsPage {
 	}
 
 	/**
-	 * Auto-publish field.
+	 * Publishing mode, with the times and weekdays used by "at set times".
 	 *
 	 * @return void
 	 */
-	public static function field_auto_publish(): void {
-		printf(
-			'<label><input type="checkbox" id="stillpress-auto-publish" name="%s" value="1" %s> %s</label>',
-			esc_attr( self::name( 'auto_publish' ) ),
-			checked( (bool) Settings::get( 'auto_publish' ), true, false ),
-			esc_html__( 'Publish changes automatically a minute after content is saved', 'stillpress' )
+	public static function field_publish_mode(): void {
+		$mode    = (string) Settings::get( 'publish_mode' );
+		$options = array(
+			'immediate' => __( 'Right after they are saved (a minute later, so a burst of edits goes out together)', 'stillpress' ),
+			'scheduled' => __( 'At set times', 'stillpress' ),
+			'manual'    => __( 'Only when I click Publish', 'stillpress' ),
 		);
+		echo '<fieldset id="stillpress-publish-mode"><legend class="screen-reader-text">' . esc_html__( 'Publish changes', 'stillpress' ) . '</legend>';
+		foreach ( $options as $value => $label ) {
+			printf(
+				'<label><input type="radio" name="%s" value="%s" %s> %s</label><br>',
+				esc_attr( self::name( 'publish_mode' ) ),
+				esc_attr( $value ),
+				checked( $mode, $value, false ),
+				esc_html( $label )
+			);
+		}
+		echo '</fieldset>';
+
+		echo '<div class="stillpress-indent" data-stillpress-schedule>';
+		printf(
+			'<p><label for="stillpress-publish-times">%s</label><br><input type="text" class="regular-text code" id="stillpress-publish-times" name="%s" value="%s" placeholder="09:00, 17:00" aria-describedby="stillpress-publish-times-description"></p>',
+			esc_html__( 'Times', 'stillpress' ),
+			esc_attr( self::name( 'publish_times' ) ),
+			esc_attr( implode( ', ', (array) Settings::get( 'publish_times' ) ) )
+		);
+		/* translators: %s: timezone name. */
+		echo '<p class="description" id="stillpress-publish-times-description">' . esc_html( sprintf( __( '24-hour times, separated by commas, in the site\'s timezone (%s). Changes saved in between wait for the next time.', 'stillpress' ), wp_timezone_string() ) ) . '</p>';
+		echo '<fieldset><legend>' . esc_html__( 'Days', 'stillpress' ) . '</legend>';
+		$days = (array) Settings::get( 'publish_days' );
+		foreach ( self::weekdays() as $code => $label ) {
+			printf(
+				'<label class="stillpress-day"><input type="checkbox" name="%s[]" value="%s" %s> %s</label> ',
+				esc_attr( self::name( 'publish_days' ) ),
+				esc_attr( $code ),
+				checked( in_array( $code, $days, true ), true, false ),
+				esc_html( $label )
+			);
+		}
+		echo '</fieldset></div>';
 		echo '<p class="description">' . esc_html__( 'Only the pages affected by a change are rebuilt.', 'stillpress' ) . '</p>';
+	}
+
+	/**
+	 * Weekday codes with their localized names, starting on the site's first day of the week.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function weekdays(): array {
+		global $wp_locale;
+		$codes = \Stillpress\Build\Schedule::DAYS;
+		$out   = array();
+		// WP_Locale numbers weekdays from Sunday (0); our codes start on Monday.
+		foreach ( $codes as $i => $code ) {
+			$out[ $code ] = $wp_locale instanceof \WP_Locale ? $wp_locale->get_weekday( ( $i + 1 ) % 7 ) : ucfirst( $code );
+		}
+		$start = (int) get_option( 'start_of_week', 1 );
+		$shift = ( $start + 6 ) % 7;
+		// Index of the first day in $codes.
+		return array_slice( $out, $shift, null, true ) + array_slice( $out, 0, $shift, true );
 	}
 
 	/**
@@ -387,8 +470,24 @@ final class SettingsPage {
 		foreach ( $options as $value => $label ) {
 			echo '<option value="' . esc_attr( $value ) . '"' . selected( (string) Settings::get( 'full_rebuild' ), $value, false ) . '>' . esc_html( $label ) . '</option>';
 		}
-		echo '</select>';
-		echo '<p class="description">' . esc_html__( 'A full rebuild catches changes no plugin announces, such as content from external services. It runs at night, site time.', 'stillpress' ) . '</p>';
+		echo '</select> ';
+		printf(
+			'<label>%s <select name="%s">',
+			esc_html__( 'on', 'stillpress' ),
+			esc_attr( self::name( 'full_rebuild_day' ) )
+		);
+		foreach ( self::weekdays() as $code => $label ) {
+			echo '<option value="' . esc_attr( $code ) . '"' . selected( (string) Settings::get( 'full_rebuild_day' ), $code, false ) . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select></label> ';
+		printf(
+			'<label>%s <input type="time" name="%s" value="%s" step="60"></label>',
+			esc_html__( 'at', 'stillpress' ),
+			esc_attr( self::name( 'full_rebuild_time' ) ),
+			esc_attr( (string) Settings::get( 'full_rebuild_time' ) )
+		);
+		/* translators: %s: timezone name. */
+		echo '<p class="description">' . esc_html( sprintf( __( 'A full rebuild catches changes no plugin announces, such as content from external services. Pick a quiet time; the day applies to weekly rebuilds. Times are in the site\'s timezone (%s).', 'stillpress' ), wp_timezone_string() ) ) . '</p>';
 	}
 
 	/**

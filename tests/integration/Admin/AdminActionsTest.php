@@ -110,10 +110,31 @@ final class AdminActionsTest extends \WP_UnitTestCase {
 		$this->assertNotEmpty( get_settings_errors( Settings::OPTION ) );
 	}
 
-	public function test_unchecked_checkbox_turns_auto_publish_off(): void {
+	public function test_schedule_form_needs_times_and_days(): void {
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
-		Settings::update( array( 'auto_publish' => true ) );
+		Settings::update( array( 'publish_days' => array( 'mon', 'fri' ) ) );
 		$_POST['option_page'] = SettingsPage::GROUP;
-		$this->assertFalse( SettingsPage::sanitize( array( 'target' => 'local' ) )['auto_publish'] );
+
+		// No day boxes ticked: nothing is submitted for publish_days.
+		$clean = SettingsPage::sanitize(
+			array(
+				'publish_mode'  => 'scheduled',
+				'publish_times' => '9:00, 17:30',
+			)
+		);
+		$this->assertSame( 'scheduled', $clean['publish_mode'] );
+		$this->assertSame( array( '09:00', '17:30' ), $clean['publish_times'] );
+		$this->assertSame( array( 'mon', 'fri' ), $clean['publish_days'], 'The stored days are kept.' );
+		$this->assertContains( 'stillpress_publish_days', wp_list_pluck( get_settings_errors( Settings::OPTION ), 'code' ) );
+
+		$clean = SettingsPage::sanitize(
+			array(
+				'publish_mode'  => 'scheduled',
+				'publish_times' => 'noon',
+				'publish_days'  => array( 'sat', 'sun' ),
+			)
+		);
+		$this->assertSame( array( 'sat', 'sun' ), $clean['publish_days'] );
+		$this->assertContains( 'stillpress_publish_times', wp_list_pluck( get_settings_errors( Settings::OPTION ), 'code' ) );
 	}
 }

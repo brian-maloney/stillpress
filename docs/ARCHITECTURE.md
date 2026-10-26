@@ -91,7 +91,7 @@ UI, REST and CLI are thin adapters over one service layer, so everything the UI 
 - Affected set = URLs from the object deps ∪ matching query signatures ∪ option deps ∪ the changed post's old and new permalinks
   ∪ `deps=unknown` URLs ∪ URLs marked volatile (`stillpress_url_is_volatile` filter).
 - **Orphans**: URLs that now return 404 or redirect get removed from the manifest, so deployers delete them.
-- **Safety nets**: a "Full rebuild" button and `--full` flag, a scheduled full rebuild (setting: off/daily/weekly, **default daily**), and a
+- **Safety nets**: a "Full rebuild" button and `--full` flag, a scheduled full rebuild (setting: off/daily/weekly at a chosen local time, **default daily at 03:00**), and a
   `stillpress_dependencies_for_url` filter for extensions that know their own deps.
 - **Output hashing**: `manifest(path, sha256, size, url_id, build_id)`. A build produces a changeset (added, modified,
   deleted), and deployers receive that changeset.
@@ -113,6 +113,14 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   (`stillpress_run`) that runs the first slice right away and chains the next, so a build starts within a second rather
   than at the next cron tick. Action Scheduler remains the fallback; `run_slice()` reports done, more or busy, and a busy
   slice reschedules itself 30 seconds later.
+- **When changes go out** (`publish_mode`): `immediate` debounces content changes by a minute and starts an
+  incremental build; `scheduled` leaves them pending until the next of `publish_times` on `publish_days`, when
+  `stillpress_publish_window` builds only if something is pending; `manual` waits for the Publish button or the CLI.
+- **Wall-clock schedules** (D18): the full rebuild and the publishing times are single Action Scheduler actions, each
+  computed by `Build\Schedule::next()` in the site's timezone (`wp_timezone()`) and re-armed by the run itself, so they
+  stay on the local clock across daylight-saving changes. `ensure_recurring()` (every `action_scheduler_init`) re-arms a
+  missing run and reschedules when the settings or timezone change. `wp stillpress schedule` and the Publish page show the
+  next runs.
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through

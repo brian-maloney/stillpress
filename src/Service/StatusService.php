@@ -77,6 +77,22 @@ final class StatusService {
 			),
 			'zip'             => null !== Zip::current_file(),
 			'published_once'  => $once,
+			'schedule'        => self::schedule( $settings ),
+		);
+	}
+
+	/**
+	 * Publishing mode and when the scheduled jobs run next.
+	 *
+	 * @param array<string,mixed> $settings Settings.
+	 * @return array{mode:string,next_publish:int|null,next_full_rebuild:int|null}
+	 */
+	private static function schedule( array $settings ): array {
+		$next = \Stillpress\Build\Queue::next_runs();
+		return array(
+			'mode'              => (string) $settings['publish_mode'],
+			'next_publish'      => $next[ \Stillpress\Build\Queue::WINDOW_HOOK ],
+			'next_full_rebuild' => $next[ \Stillpress\Build\Queue::SCHEDULED_HOOK ],
 		);
 	}
 

@@ -27,6 +27,32 @@
 	select.addEventListener( 'change', showSelected );
 	showSelected();
 
+	// Times and days only matter for "at set times"; the weekday only for weekly rebuilds.
+	const schedule = form.querySelector( '[data-stillpress-schedule]' );
+	const modes = form.querySelectorAll( 'input[name="stillpress_settings[publish_mode]"]' );
+	function showSchedule() {
+		const chosen = form.querySelector( 'input[name="stillpress_settings[publish_mode]"]:checked' );
+		if ( schedule ) {
+			schedule.hidden = ! chosen || 'scheduled' !== chosen.value;
+		}
+	}
+	modes.forEach( ( radio ) => radio.addEventListener( 'change', showSchedule ) );
+	showSchedule();
+
+	const rebuild = document.getElementById( 'stillpress-full-rebuild' );
+	const rebuildDay = form.querySelector( 'select[name="stillpress_settings[full_rebuild_day]"]' );
+	const rebuildTime = form.querySelector( 'input[name="stillpress_settings[full_rebuild_time]"]' );
+	function showRebuild() {
+		if ( rebuild && rebuildDay && rebuildTime ) {
+			rebuildDay.closest( 'label' ).hidden = 'weekly' !== rebuild.value;
+			rebuildTime.closest( 'label' ).hidden = 'off' === rebuild.value;
+		}
+	}
+	if ( rebuild ) {
+		rebuild.addEventListener( 'change', showRebuild );
+		showRebuild();
+	}
+
 	let dirty = false;
 	form.addEventListener( 'input', () => {
 		dirty = true;

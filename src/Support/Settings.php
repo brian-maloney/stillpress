@@ -50,8 +50,14 @@ final class Settings {
 							'additional_urls' => array(),
 			'exclude'                         => array(),
 			'redirects'                       => array(),
-			'auto_publish'                    => true,
+			// immediate: a minute after changes; scheduled: at publish_times on publish_days; manual: only on request.
+			'publish_mode'                    => 'immediate',
+			'publish_times'                   => array( '06:00', '18:00' ),
+			'publish_days'                    => array( 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' ),
 			'full_rebuild'                    => 'daily',
+			'full_rebuild_time'               => '03:00',
+			// Weekday for weekly full rebuilds.
+			'full_rebuild_day'                => 'sun',
 			'concurrency'                     => 4,
 			'connect_to'                      => '',
 			'feeds'                           => 'main',
@@ -71,6 +77,7 @@ final class Settings {
 		if ( ! is_array( $stored ) ) {
 			$stored = array();
 		}
+		$stored   = self::upgrade( $stored );
 		$settings = array_merge( self::defaults(), array_intersect_key( $stored, self::defaults() ) );
 		foreach ( self::CONSTANTS as $key => $constant ) {
 			if ( defined( $constant ) ) {
@@ -120,7 +127,8 @@ final class Settings {
 		if ( ! is_array( $current ) ) {
 			$current = array();
 		}
-		$merged = self::sanitize( array_merge( self::defaults(), $current, $values ) );
+		// Map old keys in the new values first, so they win over the stored publish_mode.
+		$merged = self::sanitize( array_merge( self::defaults(), self::upgrade( $current ), self::upgrade( $values ) ) );
 		update_option( self::OPTION, $merged );
 		return $merged;
 	}
@@ -132,7 +140,7 @@ final class Settings {
 	 * @return array<string,mixed>
 	 */
 	public static function sanitize( $input ): array {
-		$input    = is_array( $input ) ? $input : array();
+		$input    = self::upgrade( is_array( $input ) ? $input : array() );
 		$defaults = self::defaults();
 		$out      = array();
 
@@ -153,10 +161,20 @@ final class Settings {
 		$out['exclude']         = self::sanitize_lines( $input['exclude'] ?? array(), 500 );
 		$out['redirects']       = self::sanitize_redirects( $input['redirects'] ?? array() );
 
-		$out['auto_publish'] = ! empty( $input['auto_publish'] );
+		$mode                 = isset( $input['publish_mode'] ) ? (string) $input['publish_mode'] : $defaults['publish_mode'];
+		$out['publish_mode']  = in_array( $mode, array( 'immediate', 'scheduled', 'manual' ), true ) ? $mode : $defaults['publish_mode'];
+		$times                = \Stillpress\Build\Schedule::parse_times( $input['publish_times'] ?? $defaults['publish_times'] );
+		$out['publish_times'] = $times ? array_slice( $times, 0, 48 ) : $defaults['publish_times'];
+		$days                 = \Stillpress\Build\Schedule::parse_days( $input['publish_days'] ?? $defaults['publish_days'] );
+		$out['publish_days']  = $days ? $days : $defaults['publish_days'];
 
 		$schedule            = isset( $input['full_rebuild'] ) ? (string) $input['full_rebuild'] : $defaults['full_rebuild'];
 		$out['full_rebuild'] = in_array( $schedule, array( 'off', 'daily', 'weekly' ), true ) ? $schedule : $defaults['full_rebuild'];
+
+		$rebuild_time             = \Stillpress\Build\Schedule::parse_times( array( $input['full_rebuild_time'] ?? '' ) );
+		$out['full_rebuild_time'] = $rebuild_time ? $rebuild_time[0] : $defaults['full_rebuild_time'];
+		$rebuild_day              = \Stillpress\Build\Schedule::parse_days( array( $input['full_rebuild_day'] ?? '' ) );
+		$out['full_rebuild_day']  = $rebuild_day ? $rebuild_day[0] : $defaults['full_rebuild_day'];
 
 		$out['concurrency'] = isset( $input['concurrency'] ) ? max( 1, min( 16, (int) $input['concurrency'] ) ) : $defaults['concurrency'];
 
@@ -171,6 +189,24 @@ final class Settings {
 		$out['targets'] = \Stillpress\Deploy\TargetConfig::sanitize( $input['targets'] ?? array() );
 
 		return $out;
+	}
+
+	/**
+	 * Maps settings from earlier versions: the auto_publish switch became publish_mode.
+	 *
+	 * @param array<string,mixed> $values Stored or submitted values.
+	 * @return array<string,mixed>
+	 */
+	private static function upgrade( array $values ): array {
+		if ( array_key_exists( 'auto_publish', $values ) && ! array_key_exists( 'publish_mode', $values ) ) {
+			$on = $values['auto_publish'];
+			if ( is_string( $on ) ) {
+				$on = in_array( strtolower( $on ), array( '1', 'true', 'yes', 'on' ), true );
+			}
+			$values['publish_mode'] = $on ? 'immediate' : 'manual';
+		}
+		unset( $values['auto_publish'] );
+		return $values;
 	}
 
 	/**

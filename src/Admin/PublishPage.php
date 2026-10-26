@@ -189,11 +189,21 @@ final class PublishPage {
 				<dt><?php esc_html_e( 'Automatic publishing', 'stillpress' ); ?></dt>
 				<dd>
 					<?php
-					echo Settings::get( 'auto_publish' )
-						? esc_html__( 'On: changes are published a minute after you save them.', 'stillpress' )
-						: esc_html__( 'Off: publish changes with the button above.', 'stillpress' );
+					$schedule = $status['schedule'];
+					if ( 'immediate' === $schedule['mode'] ) {
+						esc_html_e( 'Changes are published a minute after you save them.', 'stillpress' );
+					} elseif ( 'scheduled' === $schedule['mode'] && null !== $schedule['next_publish'] ) {
+						/* translators: %s: date and time. */
+						echo esc_html( sprintf( __( 'Changes are published at set times. Next: %s.', 'stillpress' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $schedule['next_publish'] ) ) );
+					} else {
+						esc_html_e( 'Off: publish changes with the button above.', 'stillpress' );
+					}
 					?>
 				</dd>
+				<?php if ( null !== $schedule['next_full_rebuild'] ) : ?>
+					<dt><?php esc_html_e( 'Next full rebuild', 'stillpress' ); ?></dt>
+					<dd><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $schedule['next_full_rebuild'] ) ); ?></dd>
+				<?php endif; ?>
 			</dl>
 		</div>
 		<?php

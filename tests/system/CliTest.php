@@ -191,4 +191,22 @@ final class CliTest extends SystemTestCase {
 		$this->assertSame( 'stored', $rows['secret_access_key']['source'] );
 		$this->assertSame( 'STILLPRESS_S3_BUCKET', $rows['bucket']['constant'] );
 	}
+
+	public function test_schedule_shows_the_next_runs(): void {
+		list( $code ) = $this->wp( 'settings set publish_mode scheduled' );
+		$this->assertSame( 0, $code );
+		list( $code ) = $this->wp( 'settings set publish_times "9:00, 17:30"' );
+		$this->assertSame( 0, $code );
+		list( $code, $out ) = $this->wp( 'schedule --format=json' );
+		$this->assertSame( 0, $code, $out );
+		$rows = array_column( json_decode( $out, true ), null, 'job' );
+		$this->assertSame( 'at 09:00, 17:30 on mon, tue, wed, thu, fri, sat, sun', $rows['publish changes']['schedule'] );
+		$this->assertNotSame( '', $rows['publish changes']['next'] );
+		$this->assertSame( 'daily at 03:00', $rows['full rebuild']['schedule'] );
+
+		list( $code ) = $this->wp( 'settings set publish_mode sometimes' );
+		$this->assertSame( 0, $code );
+		list( , $out ) = $this->wp( 'settings get publish_mode' );
+		$this->assertStringContainsString( 'immediate', $out, 'An unknown mode falls back to the default.' );
+	}
 }

@@ -74,7 +74,7 @@ export function prepare( name ) {
 
 	wp( [ 'stillpress', 'settings', 'set', 'public_url', STATIC ] );
 	wp( [ 'stillpress', 'settings', 'set', 'target', 'zip' ] );
-	wp( [ 'stillpress', 'settings', 'set', 'auto_publish', 'false' ] );
+	wp( [ 'stillpress', 'settings', 'set', 'publish_mode', 'manual' ] );
 	wp( [ 'stillpress', 'clean', '--yes' ] );
 
 	// Visit pages once so plugins that generate files on first view (page builders) have done so.

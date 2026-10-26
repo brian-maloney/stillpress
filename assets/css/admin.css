@@ -113,6 +113,11 @@
 	color: #d63638;
 }
 
-.stillpress-settings tr[hidden] {
-	display: none;
+.stillpress-settings [hidden] {
+	display: none !important;
+}
+
+.stillpress-settings .stillpress-day {
+	display: inline-block;
+	margin-right: 12px;
 }

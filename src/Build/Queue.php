@@ -21,6 +21,7 @@ final class Queue {
 	const SLICE_HOOK     = 'stillpress_build_slice';
 	const AUTO_HOOK      = 'stillpress_auto_publish';
 	const SCHEDULED_HOOK = 'stillpress_scheduled_rebuild';
+	const WINDOW_HOOK    = 'stillpress_publish_window';
 	const WATCHDOG_HOOK  = 'stillpress_watchdog';
 
 	/** admin-ajax action that runs a slice right away. */
@@ -38,6 +39,7 @@ final class Queue {
 		add_action( self::SLICE_HOOK, array( self::class, 'run_slice' ), 10, 1 );
 		add_action( self::AUTO_HOOK, array( self::class, 'auto_publish' ), 10, 0 );
 		add_action( self::SCHEDULED_HOOK, array( self::class, 'scheduled_rebuild' ), 10, 0 );
+		add_action( self::WINDOW_HOOK, array( self::class, 'publish_window' ), 10, 0 );
 		add_action( self::WATCHDOG_HOOK, array( self::class, 'watchdog' ), 10, 0 );
 		add_action( 'stillpress_changes_recorded', array( self::class, 'changes_recorded' ), 10, 0 );
 		add_action( 'stillpress_build_finished', array( self::class, 'build_finished' ), 10, 1 );
@@ -190,7 +192,8 @@ final class Queue {
 	 * @return void
 	 */
 	public static function changes_recorded(): void {
-		if ( ! Settings::get( 'auto_publish' ) || ! get_option( 'stillpress_published_once' ) ) {
+		// Only "publish right after changes" reacts here; scheduled changes wait for publish_window().
+		if ( 'immediate' !== Settings::get( 'publish_mode' ) || ! get_option( 'stillpress_published_once' ) ) {
 			return;
 		}
 		if ( ! self::ready() ) {
@@ -217,6 +220,64 @@ final class Queue {
 	 */
 	public static function scheduled_rebuild(): void {
 		( new BuildService() )->start( 'full', 'schedule', 0, true );
+		self::schedule_next( self::SCHEDULED_HOOK );
+	}
+
+	/**
+	 * Action handler: a scheduled publishing time. Publishes pending changes, if there are any.
+	 *
+	 * @return void
+	 */
+	public static function publish_window(): void {
+		if ( 'scheduled' === Settings::get( 'publish_mode' ) && get_option( 'stillpress_published_once' ) && ( new \Stillpress\Storage\ChangeRepository() )->pending_count() > 0 ) {
+			( new BuildService() )->start( 'incremental', 'schedule', 0, true );
+		}
+		self::schedule_next( self::WINDOW_HOOK );
+	}
+
+	/**
+	 * When each schedule fires next, from the settings and the site's timezone.
+	 *
+	 * @param \DateTimeImmutable|null $after Moment to look after; now by default.
+	 * @return array<string,int|null> Hook => Unix time of its next run, or null when it is off.
+	 */
+	public static function next_runs( ?\DateTimeImmutable $after = null ): array {
+		$settings = Settings::all();
+		$zone     = wp_timezone();
+		$after    = $after ?? new \DateTimeImmutable( 'now', $zone );
+		$rebuild  = null;
+		if ( 'off' !== $settings['full_rebuild'] ) {
+			$days    = 'weekly' === $settings['full_rebuild'] ? array( $settings['full_rebuild_day'] ) : Schedule::DAYS;
+			$next    = Schedule::next( array( $settings['full_rebuild_time'] ), $days, $zone, $after );
+			$rebuild = null === $next ? null : $next->getTimestamp();
+		}
+		$window = null;
+		if ( 'scheduled' === $settings['publish_mode'] ) {
+			$next   = Schedule::next( $settings['publish_times'], $settings['publish_days'], $zone, $after );
+			$window = null === $next ? null : $next->getTimestamp();
+		}
+		return array(
+			self::SCHEDULED_HOOK => $rebuild,
+			self::WINDOW_HOOK    => $window,
+		);
+	}
+
+	/**
+	 * Schedules the next run of a wall-clock hook as a single action. Each run schedules the next one, so times stay
+	 * on the local clock across daylight-saving changes (a recurring action repeats every 86,400 seconds and drifts).
+	 *
+	 * @param string $hook SCHEDULED_HOOK or WINDOW_HOOK.
+	 * @return void
+	 */
+	private static function schedule_next( string $hook ): void {
+		if ( ! self::ready() ) {
+			return;
+		}
+		as_unschedule_all_actions( $hook, array(), self::GROUP );
+		$when = self::next_runs()[ $hook ] ?? null;
+		if ( null !== $when ) {
+			as_schedule_single_action( $when, $hook, array(), self::GROUP, true );
+		}
 	}
 
 	/**
@@ -263,19 +324,33 @@ final class Queue {
 			as_schedule_recurring_action( time() + 5 * MINUTE_IN_SECONDS, 5 * MINUTE_IN_SECONDS, self::WATCHDOG_HOOK, array(), self::GROUP, true );
 		}
 
-		$schedule = (string) Settings::get( 'full_rebuild' );
-		$interval = 'weekly' === $schedule ? WEEK_IN_SECONDS : ( 'daily' === $schedule ? DAY_IN_SECONDS : 0 );
-		$stored   = (int) get_option( 'stillpress_rebuild_interval', -1 );
-		if ( $stored === $interval && ( 0 === $interval || as_has_scheduled_action( self::SCHEDULED_HOOK, array(), self::GROUP ) ) ) {
-			return;
+		// Reschedule when the settings or the site's timezone change, or when a run went missing.
+		$settings  = Settings::all();
+		$signature = md5(
+			(string) wp_json_encode(
+				array(
+					$settings['publish_mode'],
+					$settings['publish_times'],
+					$settings['publish_days'],
+					$settings['full_rebuild'],
+					$settings['full_rebuild_time'],
+					$settings['full_rebuild_day'],
+					wp_timezone_string(),
+				)
+			)
+		);
+		$changed   = get_option( 'stillpress_schedule_signature' ) !== $signature;
+		foreach ( self::next_runs() as $hook => $when ) {
+			$missing = null !== $when && ! as_has_scheduled_action( $hook, array(), self::GROUP );
+			if ( $changed || $missing ) {
+				self::schedule_next( $hook );
+			}
 		}
-		as_unschedule_all_actions( self::SCHEDULED_HOOK, array(), self::GROUP );
-		if ( $interval > 0 ) {
-			// First run at 03:00 site time tomorrow, when traffic is usually low.
-			$first = strtotime( 'tomorrow 03:00', current_time( 'timestamp' ) ) - (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ); // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested -- Local-time arithmetic.
-			as_schedule_recurring_action( $first, $interval, self::SCHEDULED_HOOK, array(), self::GROUP, true );
+		if ( $changed ) {
+			// Earlier versions used a recurring action, which drifts across daylight-saving changes.
+			delete_option( 'stillpress_rebuild_interval' );
+			update_option( 'stillpress_schedule_signature', $signature, false );
 		}
-		update_option( 'stillpress_rebuild_interval', $interval, false );
 	}
 
 	/**
@@ -285,10 +360,11 @@ final class Queue {
 	 */
 	public static function unschedule_all(): void {
 		if ( function_exists( 'as_unschedule_all_actions' ) ) {
-			foreach ( array( self::SLICE_HOOK, self::AUTO_HOOK, self::SCHEDULED_HOOK, self::WATCHDOG_HOOK ) as $hook ) {
+			foreach ( array( self::SLICE_HOOK, self::AUTO_HOOK, self::SCHEDULED_HOOK, self::WINDOW_HOOK, self::WATCHDOG_HOOK ) as $hook ) {
 				as_unschedule_all_actions( $hook, array(), self::GROUP );
 			}
 		}
 		delete_option( 'stillpress_rebuild_interval' );
+		delete_option( 'stillpress_schedule_signature' );
 	}
 }

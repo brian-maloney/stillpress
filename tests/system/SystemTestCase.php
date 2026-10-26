@@ -104,7 +104,7 @@ abstract class SystemTestCase extends TestCase {
 				'public_url'   => self::PUBLIC_URL,
 				'target'       => 'local',
 				'local_path'   => $this->target,
-				'auto_publish' => false,
+				'publish_mode' => 'manual',
 				'concurrency'  => 4,
 			)
 		);
