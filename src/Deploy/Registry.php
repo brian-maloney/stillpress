@@ -38,6 +38,7 @@ final class Registry {
 			self::$instance->register( new LocalDirectory() );
 			self::$instance->register( new Zip() );
 			self::$instance->register( new S3() );
+			self::$instance->register( new Sftp() );
 
 			/**
 			 * Fires once so extensions can register deployers.

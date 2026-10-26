@@ -1,0 +1,11 @@
+# Test-only configuration. See README.md.
+Port 22
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+PermitRootLogin no
+AllowUsers deploy
+Subsystem sftp internal-sftp
+ForceCommand internal-sftp

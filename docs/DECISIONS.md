@@ -127,3 +127,24 @@ requires. Not supported, on purpose: instance-profile, SSO and assume-role crede
 environment variables with temporary credentials and a session token instead), and chunked/streaming signatures (large files
 use multipart uploads). Revisit if we raise the PHP floor to 8.1+ and want those credential providers.
 
+## D14. SFTP through phpseclib 3.0, unprefixed, with pinned host keys
+
+phpseclib (MIT) is the only maintained pure-PHP SSH implementation, so SFTP works without the `ssh2` extension, which few
+hosts install. The 4.x line requires PHP 8.1; the 3.0 line is still maintained alongside it and supports PHP 5.6+,
+so `^3.0` resolves to 3.0.x under our 7.4 platform pin (D5).
+
+We don't prefix its namespace for now. phpseclib 4 moved to a `phpseclib4` namespace, so only other plugins' copies of
+3.0.x can collide with ours; whichever autoloader registers first wins. Within 3.0.x the API we use (`SFTP`,
+`PublicKeyLoader`) is stable, so an older foreign copy should still work. Revisit when release packaging lands (M5):
+prefixing with a build-time tool (Strauss or PHP-Scoper) is cheap then.
+
+Host keys are pinned by fingerprint, required before the first deploy. Trust on first use would make the very first
+connection, which also sends the password, the one an attacker needs to intercept. `target check` prints the presented
+fingerprint so the admin can compare it with `ssh-keygen -lf` on the server.
+
+rsync, which the plan listed beside SFTP, isn't included: it needs the `rsync` and `ssh` binaries plus `proc_open`, which
+most WordPress hosts forbid. SFTP's change-only uploads cover the same need. Revisit if users on VPS hosts ask for it.
+
+Integration tests run against a real OpenSSH server built from `alpine` (tests/sftp), not a mock: host-key, login and
+rename behavior are what matter, and only a real server shows them.
+

@@ -116,7 +116,7 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 
 ## Deployers
 `DeployerInterface { id(); label(); settings_schema(); validate(config); deploy(Changeset, Context): Result; }`, registered through
-`stillpress_register_deployers`. Built in: **Local directory**, **ZIP** and **Amazon S3** (with optional CloudFront invalidation).
+`stillpress_register_deployers`. Built in: **Local directory**, **ZIP**, **Amazon S3** (with optional CloudFront invalidation) and **SFTP**.
 - Local directory applies the changeset with an atomic write per file (temp file + rename). It only deletes files listed in its own
   manifest, and requires a marker file `.stillpress-target` in the target directory.
 - ZIP is built from the cache and downloaded through an authenticated, nonce-checked admin endpoint (streamed). There's no public URL for it.
@@ -137,6 +137,13 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   a distribution ID, the public paths of changed and deleted files (plus the folder of each `index.html`) are invalidated once
   the deploy finishes; more than 300 paths become a single `/*`. Custom endpoints (R2, MinIO, B2) are HTTPS only, and buckets
   with dots use path-style addressing because their virtual-host names don't match S3's certificate.
+- **SFTP** (phpseclib 3, D14) mirrors the build into a remote folder over one SSH connection per slice. The host key is pinned
+  by its SHA-256 fingerprint and compared with `hash_equals` before login; there is no trust on first use, and
+  `target check` shows the presented fingerprint while none is set. Login takes a private key (OpenSSH or PEM, optional
+  passphrase) or a password. The remote folder follows the local folder's rules: never the server's root, empty or marked
+  with `.stillpress-target`, and only recorded files are deleted (never recursively). Each file is uploaded under a temporary
+  name and moved into place with OpenSSH's `posix-rename` (atomic), or delete-then-rename where the server lacks it. Folders
+  emptied by deletes are removed. A dropped connection stops the deploy; the next one resumes from the records.
 
 ## Secrets
 `Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of

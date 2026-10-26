@@ -494,6 +494,14 @@ final class Command {
 	 *     $ wp stillpress target check s3
 	 *     $ wp stillpress settings set target s3
 	 *
+	 *     # SFTP: check shows the server's host key fingerprint until one is saved.
+	 *     $ wp stillpress target set sftp host deploy.example.org
+	 *     $ wp stillpress target set sftp username deploy
+	 *     $ wp stillpress target set sftp remote_path /var/www/static
+	 *     $ wp stillpress secret set sftp private_key < ~/.ssh/stillpress_deploy
+	 *     $ wp stillpress target check sftp
+	 *     $ wp stillpress target set sftp host_key SHA256:...
+	 *
 	 * @param string[]             $args  Positional arguments.
 	 * @param array<string,string> $assoc Options.
 	 * @return void

@@ -32,6 +32,8 @@ npm run test:system         # Real builds over HTTP on the tests site (ERASES th
 npm run lint:php            # PHPCS: WordPress Coding Standards + PHPCompatibilityWP
 npm run lint:php:fix        # PHPCBF auto-fix
 npm run test:e2e            # Playwright: live vs static screenshots, 3 themes (ERASES :8889; THEMES=block,classic,pagebuilder)
+npm run sftp:start          # Test-only SFTP server as sftp.test on the wp-env network (SftpTest skips without it)
+npm run check:licenses      # Runtime Composer dependencies must be GPL-compatible
 npm run wp -- stillpress build --sync   # WP-CLI inside the dev site
 ```
 

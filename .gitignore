@@ -8,3 +8,4 @@
 *.log
 .phpunit.result.cache
 .DS_Store
+/tests/sftp/.keys/

@@ -60,8 +60,11 @@ Drafts, private posts and password-protected posts are never published. You can 
 
 == Privacy ==
 
-The plugin doesn't collect, store or transmit personal data, and makes no requests to third-party services.
+The plugin doesn't collect, store or transmit personal data. It contacts no outside service on its own: the only remote
+requests go to deploy targets you configure (Amazon S3 or another S3-compatible service, CloudFront, or an SFTP
+server), and they carry your built site and the credentials you entered for that target.
 
 == Third-party libraries ==
 
 * Action Scheduler by Automattic (GPL-3.0-or-later), used to run builds in the background.
+* phpseclib (MIT), with paragonie/constant_time_encoding and paragonie/random_compat (MIT), used for SFTP deploys.

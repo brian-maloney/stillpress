@@ -54,6 +54,26 @@ final class MultisiteTest extends \WP_UnitTestCase {
 		$this->assertSame( 'site-one-password', \Stillpress\Security\Secrets::get( 'sftp', 'password' ) );
 	}
 
+	public function test_site_admins_cannot_point_deploys_at_hosts(): void {
+		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		get_userdata( $admin )->add_cap( Capabilities::MANAGE );
+		wp_set_current_user( $admin );
+		$sftp = new \Stillpress\Deploy\Sftp();
+		foreach ( array(
+			'host'        => 'internal.example',
+			'remote_path' => '/srv/other-site',
+		) as $field => $value ) {
+			try {
+				\Stillpress\Deploy\TargetConfig::set( $sftp, $field, $value );
+				$this->fail( "A site admin set {$field}." );
+			} catch ( \InvalidArgumentException $e ) {
+				$this->assertSame( '', \Stillpress\Deploy\TargetConfig::value( $sftp, $field ) );
+			}
+		}
+		\Stillpress\Deploy\TargetConfig::set( $sftp, 'username', 'deploy' );
+		$this->assertSame( 'deploy', \Stillpress\Deploy\TargetConfig::value( $sftp, 'username' ), 'Unrestricted fields stay editable.' );
+	}
+
 	public function test_site_admins_cannot_change_server_paths(): void {
 		$admin = self::factory()->user->create( array( 'role' => 'administrator' ) );
 		get_userdata( $admin )->add_cap( Capabilities::MANAGE );

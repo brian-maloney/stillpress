@@ -22,7 +22,7 @@ and how each threat is handled. Every mitigation listed here should have a test;
 3. **Crawled HTML/CSS/XML → crawler.** Rendered output is *untrusted data*. Any plugin, theme or comment author can put
    arbitrary links, paths and markup in it.
 4. **WordPress → filesystem** (build cache, local directory target, ZIP files, asset copying).
-5. **WordPress → remote deploy targets** (S3 and CloudFront so far). Requests carry credentials; answers are untrusted.
+5. **WordPress → remote deploy targets** (S3, CloudFront and SFTP). Requests carry credentials; answers are untrusted.
 6. **WP-CLI operator → WordPress.** Trusted at the level of the shell user.
 
 ## Threats and mitigations (STRIDE)
@@ -40,17 +40,18 @@ and how each threat is handled. Every mitigation listed here should have a test;
 | T9 | DoS | **Origin overload or crawler traps** (infinite calendars, faceted URLs). | Concurrency cap (default 4), time budget per batch, response size cap (default 20 MB), maximum URL count, depth limit, query-string URLs skipped by default, back-off on 5xx responses. | `UrlClassifierTest`; limits exercised by system tests |
 | T10 | Info disclosure | **Credential leakage** through logs, REST, WP-CLI output, exports or error messages. | Secrets resolve from constants, then environment variables, then sodium-encrypted options (a key per site and slot, so ciphertexts can't be moved between fields). The CLI takes values on standard input, never as arguments, so they stay out of shell history and process lists. Secret fields are write-only in the UI. `Redactor` scrubs known secret values from every log line. Secrets never appear in REST responses or `wp stillpress settings` output. | `RedactorTest`, `SecretBoxTest`, `SecretsTest`, `CliTest` (system) |
 | T11 | Info disclosure | **ZIP archive reachable at a public URL.** | ZIPs are written outside public paths where possible, or with a random name and deny rules, and downloaded through an authenticated, nonce-checked endpoint that streams the file. | `ZipTest` |
-| T12 | Tampering | **Supply chain**: dependencies or runtime downloads introduce malicious code. | Composer and npm lockfiles are committed. Nothing is downloaded at runtime. No external requests without opt-in. CI checks that dependency licenses are GPL-compatible. | CI |
+| T12 | Tampering | **Supply chain**: dependencies or runtime downloads introduce malicious code. | Composer and npm lockfiles are committed. Nothing is downloaded at runtime. No external requests without opt-in. CI checks that runtime dependency licences are GPL-compatible. | CI (`npm run check:licenses`) |
 | T13 | Info disclosure | **Multisite cross-site access**: site A's admin publishes into or reads site B's output. | Per-site tables, cache directories and targets; paths derived from the site ID; path settings restricted to super admins. | `MultisiteTest` |
 | T14 | Spoofing / DoS | **Forged background kick** (`admin-ajax.php?action=stillpress_run`) to start work. | HMAC over the build ID; only runs a slice of an active build; the lease lock means at most one slice runs at a time. | `AdminActionsTest` |
 | T15 | Spoofing / Info disclosure | **Remote target misuse**: a custom S3 endpoint aimed at an internal service (SSRF with signed requests), a redirect that replays a signed upload elsewhere, or a TLS man-in-the-middle reading credentials. | The endpoint is a host[:port] matched against a strict pattern and always HTTPS; on multisite only a super admin may set it. Redirects are never followed. TLS is verified against WordPress's CA bundle. Only the request's own host is contacted. | `TargetConfigTest`, `S3Test` |
 | T16 | Tampering | **Deleting someone else's objects**: a deploy to a shared bucket removes files it didn't create. | The S3 deployer deletes only keys recorded in its own `target_files` rows for that endpoint, bucket and prefix; changing any of them starts a fresh record. Prefixes with `.` or `..` folders are refused. | `S3Test` |
 | T17 | Info disclosure | **Credentials in settings, logs or answers**: a secret saved through a plain settings write, or echoed back in an S3 error. | Secret fields are dropped by `TargetConfig::sanitize` from any settings write and stored only by `Secrets`. Error messages pass through the `Redactor` before they reach the log or the build row. `target show` prints "(hidden)", and secrets are refused as CLI arguments. | `TargetConfigTest`, `S3Test`, `CliTest` (system) |
+| T18 | Spoofing / Info disclosure | **SSH man-in-the-middle**: an attacker on the network path, or DNS, answers for the SFTP host and collects the password or receives the site. | The server's host key fingerprint is required and checked with `hash_equals` before any credential is sent; no trust on first use. A mismatch stops the deploy with a message that says why it matters. Private keys are preferred over passwords. | `SftpTest` |
 
 ## Residual risks
 
 - A user with `stillpress_manage` can choose where output goes within the rules above. That's an intentional power.
-  On multisite, path settings are reserved for super admins. The same holds for a custom S3 endpoint: on a single site,
+  On multisite, path settings are reserved for super admins. The same holds for a custom S3 endpoint and the SFTP host: on a single site,
   a `stillpress_manage` user can point HTTPS requests at any host, including an internal address. Those requests only ever
   carry the site's own files and the credentials that user entered.
 - Anyone who can reach the site can send requests with a forged render header. They gain nothing but a cheaper

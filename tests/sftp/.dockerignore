@@ -1,0 +1,3 @@
+# The image needs only the public keys; private keys stay out of the build context.
+.keys/deploy_key
+.keys/deploy_key_encrypted
