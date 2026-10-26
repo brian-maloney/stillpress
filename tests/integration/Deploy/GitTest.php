@@ -296,6 +296,27 @@ final class GitTest extends \WP_UnitTestCase {
 		}
 	}
 
+	public function test_transport_handles_more_requests_than_its_concurrency(): void {
+		// Five requests at concurrency 2 means three request_multiple() calls. Hooks shared across those calls
+		// made Requests parse each response twice from the second call on, a fatal TypeError.
+		$transport = new RequestsTransport( 2, 10.0, dirname( __DIR__, 2 ) . '/git/.keys/cert.pem' );
+		$requests  = array();
+		for ( $i = 0; $i < 5; $i++ ) {
+			$requests[ 'r' . $i ] = array(
+				'method'  => 'GET',
+				'url'     => 'https://git.test/inspect?action=refs&repo=' . $this->repo,
+				'headers' => array(),
+				'body'    => '',
+			);
+		}
+		$responses = $transport->send( $requests );
+		// Responses arrive in completion order; callers look them up by key.
+		$this->assertEqualsCanonicalizing( array( 'r0', 'r1', 'r2', 'r3', 'r4' ), array_keys( $responses ) );
+		foreach ( $responses as $response ) {
+			$this->assertSame( 200, $response['status'], $response['error'] );
+		}
+	}
+
 	public function test_wrong_token_is_refused_without_leaking_it(): void {
 		Secrets::set( 'git', 'token', 'wrong-token-5555' );
 		$message = (string) $this->deployer->check_connection();

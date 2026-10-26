@@ -56,12 +56,14 @@ final class RequestsTransport implements Transport {
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Request options for one request_multiple() call.
 	 *
-	 * @param array<int|string,array{method:string,url:string,headers:array<string,string>,body:string}> $requests Requests.
-	 * @return array<int|string,array{status:int,headers:array<string,string>,body:string,error:string}>
+	 * Built fresh for every call: Requests registers its response parser on the hooks object each time, so hooks
+	 * reused across calls would parse every response once per earlier call and fail.
+	 *
+	 * @return array<string,mixed>
 	 */
-	public function send( array $requests ): array {
+	private function options(): array {
 		// The curl transport applies `verify` to single requests only, not to request_multiple() handles, which would
 		// then fall back to the system's CA store. Set the bundle on every handle so the choice above always holds.
 		$ca    = $this->ca_bundle;
@@ -74,7 +76,7 @@ final class RequestsTransport implements Transport {
 				curl_setopt( $handle, CURLOPT_SSL_VERIFYHOST, 2 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.curl_curl_setopt -- See above.
 			}
 		);
-		$options = array(
+		return array(
 			'hooks'            => $hooks,
 			'timeout'          => $this->timeout,
 			'connect_timeout'  => min( 10.0, $this->timeout ),
@@ -82,9 +84,19 @@ final class RequestsTransport implements Transport {
 			'verify'           => $this->ca_bundle,
 			'useragent'        => 'Stillpress/' . ( defined( 'STILLPRESS_VERSION' ) ? STILLPRESS_VERSION : 'dev' ),
 		);
-		$out     = array();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @param array<int|string,array{method:string,url:string,headers:array<string,string>,body:string}> $requests Requests.
+	 * @return array<int|string,array{status:int,headers:array<string,string>,body:string,error:string}>
+	 */
+	public function send( array $requests ): array {
+		$out = array();
 		foreach ( array_chunk( $requests, $this->concurrency, true ) as $chunk ) {
-			$batch = array();
+			$options = $this->options();
+			$batch   = array();
 			foreach ( $chunk as $key => $request ) {
 				$batch[ $key ] = array(
 					'url'     => $request['url'],
