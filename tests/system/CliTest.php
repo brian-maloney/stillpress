@@ -222,4 +222,14 @@ final class CliTest extends SystemTestCase {
 		$this->assertStringNotContainsString( 'critical error', $out . $err );
 		$this->assertStringNotContainsString( 'test-token-0000', $out . $err );
 	}
+
+	public function test_deploy_prints_the_deployers_messages(): void {
+		list( $code, $out, $err ) = $this->wp( 'build --sync --no-deploy' );
+		$this->assertSame( 0, $code, $out . $err );
+		// A built file gone missing: the folder deployer logs an error for it and carries on.
+		unlink( \Stillpress\Support\Paths::cache_dir() . '/robots.txt' );
+		list( $code, $out, $err ) = $this->wp( 'deploy' );
+		$this->assertSame( 0, $code, $out . $err );
+		$this->assertStringContainsString( 'Could not copy robots.txt into the target folder', $out . $err, 'The per-file error is shown, not only stored in the log.' );
+	}
 }

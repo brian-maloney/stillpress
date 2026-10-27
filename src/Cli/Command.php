@@ -249,11 +249,15 @@ final class Command {
 		if ( ! $manifest ) {
 			WP_CLI::error( 'Nothing has been built yet. Run "wp stillpress build" first.' );
 		}
+		// Show the deployer's warnings and per-file errors here, as a build does.
+		Logger::echo_to_cli( true );
 		try {
 			$result = $deployer->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
 		} catch ( \RuntimeException $e ) {
 			// A refusal or a remote failure is an answer for the operator, not a crash.
 			WP_CLI::error( \Stillpress\Security\Redactor::scrub( $e->getMessage() ) );
+		} finally {
+			Logger::echo_to_cli( false );
 		}
 		WP_CLI::success( sprintf( 'Deployed to %s: %d added, %d changed, %d deleted, %d unchanged.%s', $deployer->label(), $result->added, $result->modified, $result->deleted, $result->unchanged, '' === $result->location ? '' : ' ' . $result->location ) );
 	}
@@ -275,10 +279,13 @@ final class Command {
 		if ( ! $manifest ) {
 			WP_CLI::error( 'Nothing has been built yet. Run "wp stillpress build --no-deploy" first.' );
 		}
+		Logger::echo_to_cli( true );
 		try {
 			$result = ( new \Stillpress\Deploy\Zip() )->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
 		} catch ( \RuntimeException $e ) {
 			WP_CLI::error( \Stillpress\Security\Redactor::scrub( $e->getMessage() ) );
+		} finally {
+			Logger::echo_to_cli( false );
 		}
 		$file = $result->location;
 		if ( ! empty( $assoc['out'] ) ) {
