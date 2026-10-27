@@ -127,13 +127,15 @@ final class FakeNetlify implements Transport {
 				return self::json( 415, array( 'message' => 'Wrong content type' ) );
 			}
 			$this->store[ sha1( $request['body'] ) ] = $request['body'];
+			$this->deploys[ $m[1] ]['state']         = 'uploading';
 			return self::json( 200, array( 'id' => sha1( $request['body'] ) ) );
 		}
 		return self::json( 404, array( 'message' => 'Not Found' ) );
 	}
 
 	/**
-	 * The deploy as the API shows it; a poll counts down the "preparing" phase.
+	 * The deploy as the API shows it; a poll counts down the "preparing" phase. Like the real API, a deploy that has
+	 * started receiving files reports "uploading" with `required` empty until it has them all.
 	 */
 	private function view( string $id, bool $poll ): array {
 		$deploy =& $this->deploys[ $id ];
@@ -153,13 +155,11 @@ final class FakeNetlify implements Transport {
 		if ( ! $missing && in_array( $deploy['state'], array( 'prepared', 'uploading' ), true ) && $poll ) {
 			$deploy['state']               = 'ready';
 			$this->live[ $deploy['site'] ] = $deploy['files'];
-		} elseif ( $missing ) {
-			$deploy['state'] = 'prepared';
 		}
 		return array(
 			'id'       => $id,
 			'state'    => $deploy['state'],
-			'required' => $missing,
+			'required' => 'uploading' === $deploy['state'] ? array() : $missing,
 		);
 	}
 

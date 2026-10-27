@@ -40,6 +40,12 @@ final class Netlify implements ConfigurableDeployerInterface, ResumableDeployerI
 	/** Longest time to wait in one call for Netlify to prepare an async deploy. */
 	const PREPARE_WAIT = 20;
 
+	/** Slices to wait for a fully uploaded deploy to go live before starting a fresh one. */
+	const MAX_WAITS = 3;
+
+	/** Deploy states that mean Netlify has every file. */
+	const RECEIVED = array( 'uploaded', 'processing', 'ready' );
+
 	/**
 	 * Transport (injected by tests; RequestsTransport otherwise).
 	 *
@@ -239,12 +245,14 @@ final class Netlify implements ConfigurableDeployerInterface, ResumableDeployerI
 					'async' => true,
 				)
 			);
-			$this->save_state(
-				array(
-					'deploy' => (string) ( $deploy['id'] ?? '' ),
-					'digest' => $fingerprint,
-				)
+			// A new deploy starts with nothing known about what it needs.
+			$state = array(
+				'deploy'    => (string) ( $deploy['id'] ?? '' ),
+				'digest'    => $fingerprint,
+				'remaining' => null,
+				'waits'     => 0,
 			);
+			$this->save_state( $state );
 		}
 		$id = (string) ( $deploy['id'] ?? '' );
 		if ( '' === $id ) {
@@ -268,12 +276,22 @@ final class Netlify implements ConfigurableDeployerInterface, ResumableDeployerI
 			throw new \RuntimeException( sprintf( __( 'Netlify could not prepare the deploy: %s', 'stillpress' ), (string) ( $deploy['error_message'] ?? __( 'no reason given', 'stillpress' ) ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
 		}
 
-		// Upload what Netlify asked for: one file per hash, a few at a time.
-		$required = array_values( array_unique( array_map( 'strval', (array) ( $deploy['required'] ?? array() ) ) ) );
+		// What is left to upload comes from our own records: once uploading has started, Netlify's deploy no longer
+		// lists the files it still needs (testing against the real API showed `required` empty while it waited).
+		if ( null === $state['remaining'] ) {
+			$state = array(
+				'deploy'    => $id,
+				'digest'    => $fingerprint,
+				'remaining' => array_values( array_unique( array_map( 'strval', (array) ( $deploy['required'] ?? array() ) ) ) ),
+				'waits'     => 0,
+			);
+			$this->save_state( $state );
+		}
 		$by_hash  = array_flip( $digest );
 		$client   = $this->transport();
 		$limit    = max( 1, (int) Settings::get( 'concurrency' ) );
-		foreach ( array_chunk( $required, $limit ) as $chunk ) {
+		$uploaded = 0;
+		foreach ( array_chunk( $state['remaining'], $limit ) as $chunk ) {
 			if ( $this->out_of_time() ) {
 				$result->done = false;
 				return $this->partial( $result );
@@ -294,24 +312,40 @@ final class Netlify implements ConfigurableDeployerInterface, ResumableDeployerI
 			}
 			foreach ( $client->send( $requests ) as $sha1 => $response ) {
 				if ( $response['status'] < 200 || $response['status'] >= 300 ) {
-					// The deploy stays open: the next attempt asks Netlify what is still missing.
+					// The deploy stays open with this file still listed: the next attempt sends it again.
 					/* translators: 1: file path, 2: error. */
 					throw new \RuntimeException( sprintf( __( 'Netlify refused the upload of %1$s: %2$s', 'stillpress' ), ltrim( (string) $by_hash[ $sha1 ], '/' ), self::error_text( $response ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
 				}
+				$state['remaining'] = array_values( array_diff( $state['remaining'], array( (string) $sha1 ) ) );
+				++$uploaded;
 			}
+			$this->save_state( $state );
 		}//end foreach
 
-		$final = $this->api( 'GET', '/deploys/' . rawurlencode( $id ) );
-		if ( ! empty( $final['required'] ) ) {
-			$result->done = false;
-			// Netlify still misses something; the next slice uploads it.
-			return $this->partial( $result );
-		}
-		if ( 'error' === ( $final['state'] ?? '' ) ) {
-			$this->save_state( array() );
-			/* translators: %s: error message from Netlify. */
-			throw new \RuntimeException( sprintf( __( 'Netlify failed the deploy: %s', 'stillpress' ), (string) ( $final['error_message'] ?? __( 'no reason given', 'stillpress' ) ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
-		}
+		// Every file is up: the deploy counts once Netlify says it has them all, not before.
+		$final  = $this->api( 'GET', '/deploys/' . rawurlencode( $id ) );
+		$waited = 0;
+		while ( ! in_array( $final['state'] ?? '', self::RECEIVED, true ) ) {
+			if ( 'error' === ( $final['state'] ?? '' ) ) {
+				$this->save_state( array() );
+				/* translators: %s: error message from Netlify. */
+				throw new \RuntimeException( sprintf( __( 'Netlify failed the deploy: %s', 'stillpress' ), (string) ( $final['error_message'] ?? __( 'no reason given', 'stillpress' ) ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
+			}
+			if ( $this->out_of_time() || $waited >= self::PREPARE_WAIT ) {
+				++$state['waits'];
+				if ( $state['waits'] >= self::MAX_WAITS ) {
+					$this->save_state( array() );
+					/* translators: 1: deploy ID, 2: deploy state. */
+					throw new \RuntimeException( sprintf( __( 'Netlify did not finish deploy %1$s (still "%2$s") after every file was uploaded. The next publish starts a new deploy.', 'stillpress' ), $id, (string) ( $final['state'] ?? '' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
+				}
+				$this->save_state( $state );
+				$result->done = false;
+				return $this->partial( $result );
+			}
+			$this->pause();
+			++$waited;
+			$final = $this->api( 'GET', '/deploys/' . rawurlencode( $id ) );
+		}//end while
 
 		foreach ( $changed as $path => $hash ) {
 			$files->set( $path, $hash );
@@ -329,7 +363,7 @@ final class Netlify implements ConfigurableDeployerInterface, ResumableDeployerI
 		}
 		$result->unchanged = count( $digest ) - count( $changed );
 		$this->save_state( array() );
-		$logger->info( sprintf( 'Netlify deploy %s is %s (%d files uploaded).', $id, (string) ( $final['state'] ?? 'uploaded' ), count( $required ) ) );
+		$logger->info( sprintf( 'Netlify deploy %s is %s (%d files uploaded in this run).', $id, (string) ( $final['state'] ?? 'uploaded' ), $uploaded ) );
 		return $result;
 	}
 
@@ -439,21 +473,24 @@ final class Netlify implements ConfigurableDeployerInterface, ResumableDeployerI
 	/**
 	 * Unfinished deploy for this site.
 	 *
-	 * @return array{deploy:string,digest:string}
+	 * @return array{deploy:string,digest:string,remaining:string[]|null,waits:int}
 	 */
 	private function state(): array {
 		$all   = get_option( self::STATE_OPTION, array() );
 		$state = is_array( $all ) && isset( $all[ $this->target_key() ] ) && is_array( $all[ $this->target_key() ] ) ? $all[ $this->target_key() ] : array();
 		return array(
-			'deploy' => (string) ( $state['deploy'] ?? '' ),
-			'digest' => (string) ( $state['digest'] ?? '' ),
+			'deploy'    => (string) ( $state['deploy'] ?? '' ),
+			'digest'    => (string) ( $state['digest'] ?? '' ),
+			// Hashes still to upload; null until the deploy is prepared and Netlify has said what it needs.
+			'remaining' => isset( $state['remaining'] ) && is_array( $state['remaining'] ) ? array_values( array_map( 'strval', $state['remaining'] ) ) : null,
+			'waits'     => (int) ( $state['waits'] ?? 0 ),
 		);
 	}
 
 	/**
 	 * Saves or clears the unfinished deploy.
 	 *
-	 * @param array<string,string> $state State, or an empty array to clear it.
+	 * @param array<string,mixed> $state State, or an empty array to clear it.
 	 * @return void
 	 */
 	private function save_state( array $state ): void {

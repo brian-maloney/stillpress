@@ -199,6 +199,39 @@ final class NetlifyTest extends \WP_UnitTestCase {
 		$this->assertCount( 3, $this->live() );
 	}
 
+	public function test_deploy_stuck_after_every_upload_is_replaced(): void {
+		// Netlify keeps saying "uploading" although every file arrived: wait a few slices, then start over.
+		$this->api->fail = static function ( $request ) {
+			if ( 'GET' === $request['method'] && preg_match( '#/api/v1/deploys/(d1)$#', (string) wp_parse_url( $request['url'], PHP_URL_PATH ), $m ) ) {
+				return FakeNetlify::json(
+					200,
+					array(
+						'id'       => 'd1',
+						'state'    => 'uploading',
+						'required' => array(),
+					)
+				);
+			}
+			return null;
+		};
+		for ( $i = 1; $i < Netlify::MAX_WAITS; $i++ ) {
+			$this->assertFalse( $this->deploy()->done, "Waiting, slice {$i}." );
+		}
+		try {
+			$this->deploy();
+			$this->fail( 'Expected the stuck deploy to be given up.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertStringContainsString( 'did not finish deploy d1', $e->getMessage() );
+		}
+		$this->assertCount( 3, $this->api->sent( 'PUT' ), 'Its files were sent once.' );
+		$this->assertSame( array(), $this->live(), 'Nothing went live.' );
+
+		$this->api->fail = null;
+		$this->assertTrue( $this->deploy()->done );
+		$this->assertCount( 2, $this->api->sent( 'POST', '/deploys' ), 'A new deploy replaced it.' );
+		$this->assertCount( 3, $this->live() );
+	}
+
 	public function test_rate_limit_keeps_changes_pending(): void {
 		$this->api->fail = static function ( $request ) {
 			return 'POST' === $request['method'] ? FakeNetlify::json( 429, array( 'message' => 'Rate limit exceeded' ) ) : null;

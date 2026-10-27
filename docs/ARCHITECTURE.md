@@ -172,8 +172,11 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   the hashes Netlify reports missing. SHA-1s are kept per path beside the SHA-256 records, so unchanged files aren't
   re-hashed. A site with no changes since the last deploy creates no deploy (Netlify allows 100 API deploys a day). The open
   deploy's ID and a fingerprint of its file list are saved, so a deploy interrupted while Netlify prepares it or mid-upload
-  resumes in the next slice; an expired or failed one is replaced. Files with `#` or `?` in their path are skipped, as
-  Netlify requires.
+  resumes in the next slice; an expired or failed one is replaced. Once uploading starts, Netlify's deploy stops listing
+  what it still needs, so the hashes left to upload are kept in that saved state, and a deploy only counts once Netlify
+  reports it `uploaded`, `processing` or `ready` (one still `uploading` after three slices with nothing left to send is
+  replaced). Files with `#` or `?` in their path are skipped, as Netlify requires. Netlify serves paths in lowercase
+  and redirects mixed-case requests to them, so mixed-case asset names cost a redirect there.
 - **Cloudflare** (D17) publishes an assets-only Worker through the documented direct upload for Workers static assets:
   a manifest of path → {hash, size} (hash: first 32 hex characters of SHA-256 over the base64 contents plus the extension,
   as in Cloudflare's example), multipart uploads of the buckets Cloudflare asks for, then a Worker upload with only a

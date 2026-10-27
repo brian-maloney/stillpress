@@ -190,6 +190,11 @@ Requests over 30 seconds are cut off, so deploys are created `async` and polled 
 and a fingerprint of its file list are saved, and the next slice resumes it rather than creating another (which would
 spend another deploy). Serverless functions aren't uploaded: a static export has none.
 
+Testing against the real API showed that a deploy which has started receiving files reports `required` as empty while
+it is still `uploading`. Resuming from that answer declared a half-uploaded deploy finished, and Netlify kept serving
+the previous one. The hashes left to upload are now tracked in our own state, and success waits for `uploaded`,
+`processing` or `ready`. The in-memory test API reproduces the quirk.
+
 ## D17. Cloudflare through Workers static assets, not Pages direct upload
 
 Cloudflare documents only the last step of a Pages direct upload (create a deployment from a manifest of "uploaded
