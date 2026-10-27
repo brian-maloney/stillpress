@@ -400,6 +400,8 @@ final class Processor {
 				'path'          => null,
 				'content_hash'  => null,
 				'size'          => 0,
+				// A redirect that now answers 404 must not keep its old target: _redirects would still send it there.
+				'redirect_to'   => null,
 				'last_build_id' => $this->build_id,
 				'rendered_at'   => current_time( 'mysql', true ),
 				'error'         => null,

@@ -120,6 +120,28 @@ final class FullBuildTest extends SystemTestCase {
 		$this->assertArrayHasKey( '404.html', $files );
 	}
 
+	public function test_redirect_that_starts_answering_404_leaves_redirects(): void {
+		$this->build();
+		// An attachment page redirects to its file when attachment pages are off (as the reset sets them).
+		$upload = wp_upload_bits( 'stillpress-redirect-test.txt', null, 'file contents' );
+		$this->assertEmpty( $upload['error'] );
+		$id = wp_insert_attachment(
+			array(
+				'post_title'     => 'Stillpress redirect test',
+				'post_name'      => 'stillpress-redirect-test',
+				'post_mime_type' => 'text/plain',
+				'post_status'    => 'inherit',
+			),
+			$upload['file']
+		);
+		$this->build( 'incremental' );
+		$this->assertStringContainsString( '/stillpress-redirect-test/ ', $this->snapshot()['_redirects'] ?? '', 'The redirect is published.' );
+
+		wp_delete_attachment( $id, true );
+		$this->build( 'full' );
+		$this->assertStringNotContainsString( '/stillpress-redirect-test/', $this->snapshot()['_redirects'] ?? '', 'A redirect that now answers 404 is gone from _redirects.' );
+	}
+
 	public function test_zip_target(): void {
 		wp_insert_post(
 			array(

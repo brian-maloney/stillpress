@@ -103,14 +103,15 @@ final class Generated {
 	}
 
 	/**
-	 * Recorded origin redirects that have a public target.
+	 * Recorded origin redirects that have a public target and still redirect (a URL that has since started to answer
+	 * 404 keeps its row, but not its rule).
 	 *
 	 * @return array<int,array<string,mixed>>
 	 */
 	private function origin_redirects(): array {
 		global $wpdb;
 		return (array) $wpdb->get_results(
-			$wpdb->prepare( "SELECT url, redirect_to, status_code FROM %i WHERE kind = 'redirect' AND redirect_to IS NOT NULL ORDER BY id", Schema::table( 'urls' ) ),
+			$wpdb->prepare( "SELECT url, redirect_to, status_code FROM %i WHERE kind = 'redirect' AND redirect_to IS NOT NULL AND status_code IN (301, 302, 307, 308) ORDER BY id", Schema::table( 'urls' ) ),
 			ARRAY_A
 		);
 	}
