@@ -209,4 +209,17 @@ final class CliTest extends SystemTestCase {
 		list( , $out ) = $this->wp( 'settings get publish_mode' );
 		$this->assertStringContainsString( 'immediate', $out, 'An unknown mode falls back to the default.' );
 	}
+
+	public function test_deploy_failure_is_an_error_message_not_a_crash(): void {
+		list( $code, $out, $err ) = $this->wp( 'build --sync --no-deploy' );
+		$this->assertSame( 0, $code, $out . $err );
+		// A complete Git target whose server can't be reached: problem() passes, deploy() throws.
+		$this->wp( 'target set git repository_url https://127.0.0.1:9/nowhere.git' );
+		$this->wp( 'secret set git token', "test-token-0000\n" );
+		list( $code, $out, $err ) = $this->wp( 'deploy --target=git' );
+		$this->assertSame( 1, $code );
+		$this->assertStringContainsString( 'Could not reach the Git server', $err );
+		$this->assertStringNotContainsString( 'critical error', $out . $err );
+		$this->assertStringNotContainsString( 'test-token-0000', $out . $err );
+	}
 }

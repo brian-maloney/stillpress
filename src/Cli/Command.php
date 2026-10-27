@@ -249,7 +249,12 @@ final class Command {
 		if ( ! $manifest ) {
 			WP_CLI::error( 'Nothing has been built yet. Run "wp stillpress build" first.' );
 		}
-		$result = $deployer->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
+		try {
+			$result = $deployer->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
+		} catch ( \RuntimeException $e ) {
+			// A refusal or a remote failure is an answer for the operator, not a crash.
+			WP_CLI::error( \Stillpress\Security\Redactor::scrub( $e->getMessage() ) );
+		}
 		WP_CLI::success( sprintf( 'Deployed to %s: %d added, %d changed, %d deleted, %d unchanged.%s', $deployer->label(), $result->added, $result->modified, $result->deleted, $result->unchanged, '' === $result->location ? '' : ' ' . $result->location ) );
 	}
 
@@ -270,8 +275,12 @@ final class Command {
 		if ( ! $manifest ) {
 			WP_CLI::error( 'Nothing has been built yet. Run "wp stillpress build --no-deploy" first.' );
 		}
-		$result = ( new \Stillpress\Deploy\Zip() )->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
-		$file   = $result->location;
+		try {
+			$result = ( new \Stillpress\Deploy\Zip() )->deploy( $manifest, \Stillpress\Support\Paths::cache_dir(), new Logger() );
+		} catch ( \RuntimeException $e ) {
+			WP_CLI::error( \Stillpress\Security\Redactor::scrub( $e->getMessage() ) );
+		}
+		$file = $result->location;
 		if ( ! empty( $assoc['out'] ) ) {
 			if ( ! copy( $file, (string) $assoc['out'] ) ) {
 				WP_CLI::error( 'Could not write ' . $assoc['out'] );
