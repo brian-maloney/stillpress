@@ -15,6 +15,7 @@ use Stillpress\Deploy\TargetConfig;
 use Stillpress\Security\Redactor;
 use Stillpress\Security\Secrets;
 use Stillpress\Support\Logger;
+use Stillpress\Tests\Support\CountingSftp;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Test fixtures.
 
@@ -94,7 +95,11 @@ final class SftpTest extends \WP_UnitTestCase {
 	}
 
 	private function deploy(): \Stillpress\Deploy\DeployResult {
-		return $this->deployer->deploy( $this->manifest(), $this->cache, new Logger() );
+		return $this->deploy_with( $this->deployer );
+	}
+
+	private function deploy_with( Sftp $deployer ): \Stillpress\Deploy\DeployResult {
+		return $deployer->deploy( $this->manifest(), $this->cache, new Logger() );
 	}
 
 	public function test_fingerprint_matches_openssh_format(): void {
@@ -174,6 +179,8 @@ final class SftpTest extends \WP_UnitTestCase {
 		$this->assertSame( 3, $this->deploy()->added );
 
 		Secrets::set( 'sftp', 'password', 'wrong-password-123' );
+		$this->assertSame( 3, $this->deploy()->unchanged, 'Nothing to send: no connection, so no login to refuse.' );
+		file_put_contents( $this->cache . '/index.html', 'home v2' );
 		try {
 			$this->deploy();
 			$this->fail( 'Expected a refused login.' );
@@ -207,6 +214,49 @@ final class SftpTest extends \WP_UnitTestCase {
 		$result = $this->deploy();
 		$this->assertTrue( $result->done );
 		$this->assertSame( 3, $result->added );
+	}
+
+	public function test_round_trips_per_change_are_bounded(): void {
+		// Every SFTP request waits for its reply, so on a real network the request count is the deploy time.
+		$deployer = new Sftp(
+			static function ( $host, $port, $timeout ) {
+				return new CountingSftp( $host, $port, $timeout );
+			}
+		);
+		$this->deploy_with( $deployer );
+
+		CountingSftp::reset_counts();
+		$this->assertSame( 3, $this->deploy_with( $deployer )->unchanged );
+		$this->assertSame( 0, CountingSftp::round_trips(), 'Nothing changed: no connection at all.' );
+
+		// Session setup is 2 (INIT, REALPATH), the marker check 1, and an atomic replace 3 (OPEN, CLOSE, rename).
+		file_put_contents( $this->cache . '/index.html', 'home v2' );
+		CountingSftp::reset_counts();
+		$this->assertSame( 1, $this->deploy_with( $deployer )->modified );
+		$this->assertSame( 6, CountingSftp::round_trips(), (string) wp_json_encode( CountingSftp::$counts ) );
+
+		// A new file in a new folder: one MKDIR, then OPEN and CLOSE.
+		mkdir( $this->cache . '/new' );
+		file_put_contents( $this->cache . '/new/page.html', 'new' );
+		CountingSftp::reset_counts();
+		$this->assertSame( 1, $this->deploy_with( $deployer )->added );
+		$this->assertSame( 6, CountingSftp::round_trips(), (string) wp_json_encode( CountingSftp::$counts ) );
+
+		// A delete that empties its folder: REMOVE, then RMDIR of the folder; no listings.
+		unlink( $this->cache . '/new/page.html' );
+		rmdir( $this->cache . '/new' );
+		CountingSftp::reset_counts();
+		$this->assertSame( 1, $this->deploy_with( $deployer )->deleted );
+		$this->assertSame( 5, CountingSftp::round_trips(), (string) wp_json_encode( CountingSftp::$counts ) );
+		$this->assertFalse( $this->peek->file_exists( $this->remote . '/new' ) );
+	}
+
+	public function test_folder_removed_by_someone_else_is_recreated(): void {
+		$this->deploy();
+		$this->peek->delete( $this->remote . '/about', true );
+		file_put_contents( $this->cache . '/about/index.html', 'about v2' );
+		$this->assertSame( 1, $this->deploy()->modified );
+		$this->assertSame( 'about v2', $this->peek->get( $this->remote . '/about/index.html' ) );
 	}
 
 	public function test_server_root_is_refused(): void {

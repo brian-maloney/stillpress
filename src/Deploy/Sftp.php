@@ -34,6 +34,23 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 	private $deadline = 0.0;
 
 	/**
+	 * Builds the connection: fn( string $host, int $port, int $timeout ): SftpConnection. Tests pass one that counts
+	 * packets; null makes a plain phpseclib connection.
+	 *
+	 * @var callable|null
+	 */
+	private $connect;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param callable|null $connect Connection factory (tests).
+	 */
+	public function __construct( ?callable $connect = null ) {
+		$this->connect = $connect;
+	}
+
+	/**
 	 * {@inheritDoc}
 	 */
 	public function id(): string {
@@ -194,24 +211,44 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 		if ( null !== $problem ) {
 			throw new \RuntimeException( $problem ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Logged as plain text and escaped on display.
 		}
-		$sftp = $this->open();
-		$root = $this->root();
-		$this->prepare_root( $sftp );
-
+		$root   = $this->root();
 		$files  = new TargetFiles( $this->target_key() );
 		$held   = $files->all();
 		$source = new PathMapper( $source_root );
 		$result = new DeployResult();
-		$dirs   = array( $root => true );
 
 		$result->location = 'sftp://' . TargetConfig::value( $this, 'username' ) . '@' . TargetConfig::value( $this, 'host' ) . ':' . TargetConfig::value( $this, 'port' ) . '/' . ltrim( $root, '/' );
 
+		// Every request is a network round trip, so work out what changed before connecting at all.
+		$changed = array();
 		foreach ( $manifest as $path => $hash ) {
-			$path = (string) $path;
-			if ( isset( $held[ $path ] ) && $held[ $path ] === $hash ) {
+			if ( isset( $held[ (string) $path ] ) && $held[ (string) $path ] === $hash ) {
 				++$result->unchanged;
-				continue;
+			} else {
+				$changed[ (string) $path ] = (string) $hash;
 			}
+		}
+		$gone = array_keys( array_diff_key( $held, $manifest ) );
+		if ( ! $changed && ! $gone ) {
+			return $result;
+		}
+
+		$sftp = $this->open();
+		$this->prepare_root( $sftp );
+
+		// Folders that held files at the last deploy still exist, unless someone removed them; make_dir() and the
+		// retry below cover that. Knowing them saves a request per folder.
+		$dirs   = array( $root => true );
+		$prefix = $root . '/';
+		foreach ( array_keys( $held ) as $path ) {
+			$dir = dirname( $prefix . $path );
+			while ( 0 === strpos( $dir, $prefix ) && ! isset( $dirs[ $dir ] ) ) {
+				$dirs[ $dir ] = true;
+				$dir          = dirname( $dir );
+			}
+		}
+
+		foreach ( $changed as $path => $hash ) {
 			if ( $this->out_of_time() ) {
 				$result->done = false;
 				$sftp->disconnect();
@@ -224,14 +261,22 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 				++$result->failed;
 				continue;
 			}
-			$remote = $root . '/' . $path;
-			if ( ! $this->ensure_dir( $sftp, dirname( $remote ), $dirs ) || ! $this->upload( $sftp, $file, $remote ) ) {
+			$remote  = $root . '/' . $path;
+			$replace = isset( $held[ $path ] );
+			$ok      = $this->make_dir( $sftp, dirname( $remote ), $dirs ) && $this->upload( $sftp, $file, $remote, $replace );
+			if ( ! $ok ) {
+				self::fail_if_disconnected( $sftp );
+				// The folder may have been removed since the last deploy: forget it, create it, try once more.
+				unset( $dirs[ dirname( $remote ) ] );
+				$ok = $this->make_dir( $sftp, dirname( $remote ), $dirs ) && $this->upload( $sftp, $file, $remote, $replace );
+			}
+			if ( ! $ok ) {
 				self::fail_if_disconnected( $sftp );
 				$logger->error( sprintf( 'Could not upload %s over SFTP.', $path ) );
 				++$result->failed;
 				continue;
 			}
-			$files->set( $path, (string) $hash );
+			$files->set( $path, $hash );
 			if ( isset( $held[ $path ] ) ) {
 				++$result->modified;
 			} else {
@@ -239,7 +284,9 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 			}
 		}//end foreach
 
-		foreach ( array_keys( array_diff_key( $held, $manifest ) ) as $path ) {
+		$kept = array();
+		// Folders found not to be empty in this deploy.
+		foreach ( $gone as $path ) {
 			if ( $this->out_of_time() ) {
 				$result->done = false;
 				$sftp->disconnect();
@@ -247,17 +294,20 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 			}
 			$path   = (string) $path;
 			$remote = $root . '/' . $path;
-			// Never recursive: a record that somehow names a folder must not take its contents with it.
-			if ( $sftp->file_exists( $remote ) && ( $sftp->is_dir( $remote ) || ! $sftp->delete( $remote, false ) ) ) {
+			// Never recursive: SFTP's remove fails on a folder, so a record that somehow names one takes nothing with
+			// it. A failed remove is checked once more: a file that is already gone counts as deleted.
+			if ( ! $sftp->delete( $remote, false ) ) {
 				self::fail_if_disconnected( $sftp );
-				$logger->error( sprintf( 'Could not delete %s over SFTP.', $path ) );
-				++$result->failed;
-				continue;
+				if ( $sftp->file_exists( $remote ) ) {
+					$logger->error( sprintf( 'Could not delete %s over SFTP.', $path ) );
+					++$result->failed;
+					continue;
+				}
 			}
 			$files->remove( $path );
-			$this->remove_empty_parents( $sftp, dirname( $remote ), $root );
+			$this->remove_empty_parents( $sftp, dirname( $remote ), $root, $kept );
 			++$result->deleted;
-		}
+		}//end foreach
 		$sftp->disconnect();
 		return $result;
 	}
@@ -306,7 +356,7 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 		$host = trim( (string) TargetConfig::value( $this, 'host' ), '[]' );
 		$port = (int) TargetConfig::value( $this, 'port' );
 		try {
-			$sftp = new SftpConnection( $host, $port, 15 );
+			$sftp = null === $this->connect ? new SftpConnection( $host, $port, 15 ) : call_user_func( $this->connect, $host, $port, 15 );
 			if ( false === $sftp->getServerPublicHostKey() ) {
 				throw new \RuntimeException( 'bad host key signature' );
 			}
@@ -359,7 +409,12 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 	 * @throws \RuntimeException When the folder can't be created or isn't safe.
 	 */
 	private function prepare_root( SftpConnection $sftp ): void {
-		$root = $this->root();
+		$root   = $this->root();
+		$marker = $root . '/' . TargetPolicy::MARKER;
+		if ( $sftp->file_exists( $marker ) ) {
+			return;
+			// Ours already: one request instead of listing the folder.
+		}
 		if ( ! $sftp->is_dir( $root ) && ! $sftp->mkdir( $root, -1, true ) ) {
 			/* translators: %s: remote folder. */
 			throw new \RuntimeException( sprintf( __( 'Could not create %s on the SFTP server.', 'stillpress' ), $root ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
@@ -368,21 +423,24 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 		if ( null !== $problem ) {
 			throw new \RuntimeException( $problem ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
 		}
-		$marker = $root . '/' . TargetPolicy::MARKER;
-		if ( ! $sftp->file_exists( $marker ) ) {
-			$sftp->put( $marker, "This folder is managed by Stillpress. Files listed in its deploy records may be replaced or deleted.\n" );
-		}
+		$sftp->put( $marker, "This folder is managed by Stillpress. Files listed in its deploy records may be replaced or deleted.\n" );
 	}
 
 	/**
-	 * Uploads a file under a temporary name, then moves it into place.
+	 * Uploads a file. A file that replaces a published version goes up under a temporary name and is then moved into
+	 * place, so visitors never get half of it; a new file has no published version, so it is written in place, which
+	 * saves a round trip.
 	 *
-	 * @param SftpConnection $sftp   Connection.
-	 * @param string         $local  Local file.
-	 * @param string         $remote Remote path.
+	 * @param SftpConnection $sftp    Connection.
+	 * @param string         $local   Local file.
+	 * @param string         $remote  Remote path.
+	 * @param bool           $replace True when this deployer published a version of the file before.
 	 * @return bool
 	 */
-	private function upload( SftpConnection $sftp, string $local, string $remote ): bool {
+	private function upload( SftpConnection $sftp, string $local, string $remote, bool $replace ): bool {
+		if ( ! $replace ) {
+			return (bool) $sftp->put( $remote, $local, SftpConnection::SOURCE_LOCAL_FILE );
+		}
 		$tmp = dirname( $remote ) . '/.stillpress-tmp-' . bin2hex( random_bytes( 6 ) );
 		if ( ! $sftp->put( $tmp, $local, SftpConnection::SOURCE_LOCAL_FILE ) ) {
 			return false;
@@ -400,37 +458,50 @@ final class Sftp implements ConfigurableDeployerInterface, ResumableDeployerInte
 	}
 
 	/**
-	 * Creates a remote folder and its parents, remembering what exists.
+	 * Makes sure a folder inside the root exists, with one request when its parent exists: try to create it; if that
+	 * fails, it either exists already or its parent is missing, which is created first. (phpseclib's recursive mkdir
+	 * would try every folder from "/" down instead.)
 	 *
 	 * @param SftpConnection     $sftp Connection.
 	 * @param string             $dir  Remote folder.
 	 * @param array<string,bool> $seen Folders known to exist (updated).
 	 * @return bool
 	 */
-	private function ensure_dir( SftpConnection $sftp, string $dir, array &$seen ): bool {
+	private function make_dir( SftpConnection $sftp, string $dir, array &$seen ): bool {
 		if ( isset( $seen[ $dir ] ) ) {
 			return true;
 		}
-		if ( $sftp->is_dir( $dir ) || $sftp->mkdir( $dir, -1, true ) ) {
+		$root = $this->root();
+		if ( strlen( $dir ) <= strlen( $root ) || 0 !== strpos( $dir, $root . '/' ) ) {
+			return false;
+			// Never create anything outside the root.
+		}
+		if ( $sftp->mkdir( $dir ) || $sftp->is_dir( $dir ) ) {
 			$seen[ $dir ] = true;
 			return true;
 		}
-		return false;
+		if ( ! $this->make_dir( $sftp, dirname( $dir ), $seen ) || ! $sftp->mkdir( $dir ) ) {
+			return false;
+		}
+		$seen[ $dir ] = true;
+		return true;
 	}
 
 	/**
-	 * Removes folders left empty by deletes, up to (not including) the root.
+	 * Removes folders left empty by deletes, up to (not including) the root. SFTP's rmdir only removes an empty
+	 * folder, so trying it is the check: one request, and a folder that still has files is left alone.
 	 *
-	 * @param SftpConnection $sftp Connection.
-	 * @param string         $dir  Folder that may now be empty.
-	 * @param string         $root Remote root.
+	 * @param SftpConnection     $sftp Connection.
+	 * @param string             $dir  Folder that may now be empty.
+	 * @param string             $root Remote root.
+	 * @param array<string,bool> $kept Folders already found not to be empty (updated).
 	 * @return void
 	 */
-	private function remove_empty_parents( SftpConnection $sftp, string $dir, string $root ): void {
+	private function remove_empty_parents( SftpConnection $sftp, string $dir, string $root, array &$kept ): void {
 		$prefix = $root . '/';
-		while ( 0 === strpos( $dir, $prefix ) && $dir !== $root ) {
-			$entries = $sftp->nlist( $dir );
-			if ( false === $entries || array_diff( $entries, array( '.', '..' ) ) || ! $sftp->rmdir( $dir ) ) {
+		while ( 0 === strpos( $dir, $prefix ) && $dir !== $root && ! isset( $kept[ $dir ] ) ) {
+			if ( ! $sftp->rmdir( $dir ) ) {
+				$kept[ $dir ] = true;
 				return;
 			}
 			$dir = dirname( $dir );

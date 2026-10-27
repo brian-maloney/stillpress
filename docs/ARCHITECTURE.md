@@ -149,9 +149,14 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   by its SHA-256 fingerprint and compared with `hash_equals` before login; there is no trust on first use, and
   `target check` shows the presented fingerprint while none is set. Login takes a private key (OpenSSH or PEM, optional
   passphrase) or a password. The remote folder follows the local folder's rules: never the server's root, empty or marked
-  with `.stillpress-target`, and only recorded files are deleted (never recursively). Each file is uploaded under a temporary
-  name and moved into place with OpenSSH's `posix-rename` (atomic), or delete-then-rename where the server lacks it. Folders
-  emptied by deletes are removed. A dropped connection stops the deploy; the next one resumes from the records.
+  with `.stillpress-target`, and only recorded files are deleted (never recursively). Every SFTP request is a network round
+  trip, so the deployer keeps them few: a deploy with no changes doesn't connect; the marker is checked with one request
+  (the folder is listed only on a first deploy); folders that held files last time are assumed to exist (recreated if
+  someone removed them), and new ones take one `MKDIR`. A file that replaces a published version is uploaded under a
+  temporary name and moved into place with OpenSSH's `posix-rename` (atomic), or delete-then-rename where the server
+  lacks it; a new file has no published version and is written in place. Deletes are one `REMOVE` (it fails on a folder),
+  and emptied folders are removed by trying `RMDIR` upward. A dropped connection stops the deploy; the next one resumes
+  from the records. `CountingSftp` in the tests pins the request counts.
 - **Git** (D15) commits the build to one branch it owns and pushes over Git's smart-HTTP protocol with a token, in pure
   PHP (`Deploy\Git`: object IDs, trees, version-2 packs of whole objects, pkt-lines, receive-pack with report-status).
   Each publish is one commit whose tree is the whole site plus `.stillpress-target` and `.nojekyll`, with the branch head as
