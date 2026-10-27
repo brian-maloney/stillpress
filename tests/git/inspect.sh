@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test-only helper. Query: action=create|refs|tree|show|log&repo=<name>[&ref=<branch>][&path=<file>]
+# Test-only helper. Query: action=create|seed|refs|tree|show|log|fsck|head|sethead&repo=<name>[&ref=<branch>][&path=<file>]
 # Names are restricted to safe characters before they reach git.
 printf 'Content-Type: text/plain\r\n\r\n'
 param() { printf '%s' "$QUERY_STRING" | tr '&' '\n' | sed -n "s/^$1=//p" | head -n 1; }
@@ -22,5 +22,7 @@ case "$action" in
 	show) git --git-dir="$dir" show "refs/heads/$ref:$path" ;;
 	log) git --git-dir="$dir" log --format='%H %P|%an <%ae>|%s' "refs/heads/$ref" ;;
 	fsck) git --git-dir="$dir" fsck --full 2>&1; echo "exit=$?" ;;
+	head) git --git-dir="$dir" symbolic-ref HEAD ;;
+	sethead) git --git-dir="$dir" symbolic-ref HEAD "refs/heads/$ref" && echo set ;;
 	*) echo "bad action" ;;
 esac

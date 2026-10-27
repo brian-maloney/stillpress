@@ -1,0 +1,10 @@
+#!/bin/sh
+# Test-only: like GitHub, refuse to delete the repository's default branch (the one HEAD points to).
+current=$(git symbolic-ref -q HEAD)
+while read -r old new ref; do
+	if [ "$new" = "0000000000000000000000000000000000000000" ] && [ "$ref" = "$current" ]; then
+		echo "refusing to delete the current branch: $ref" >&2
+		exit 1
+	fi
+done
+exit 0

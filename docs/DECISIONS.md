@@ -167,6 +167,11 @@ Large first deploys would exceed one slice, PHP's memory and some hosts' request
 batches, each in a commit on a temporary `stillpress-upload-<key>` branch that keeps them reachable (unreachable objects
 may be garbage-collected) until the final push moves the real branch and deletes the temporary one.
 
+Testing against GitHub showed that in an empty repository the first branch pushed becomes the default branch, and GitHub
+refuses to delete it: the upload branch was undeletable, and the atomic final push failed with it. In an empty
+repository the real branch is now created first, with a preparing commit that holds only the marker files, and the
+upload branch is deleted in a separate push whose failure is only a warning.
+
 Writing the tests also showed that Requests ignores its `verify` option inside `request_multiple()`, so S3's concurrent
 uploads had been verified against the system CA store rather than WordPress's bundle. `RequestsTransport` now sets the
 bundle on every curl handle.

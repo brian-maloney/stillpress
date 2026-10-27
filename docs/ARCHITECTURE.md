@@ -164,7 +164,10 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
   the branch's contents" is on. Only new and changed blobs are sent, located through `target_files` records of each file's
   SHA-256 and blob ID; when the branch head isn't the commit we last pushed, everything is sent again. Deploys over 16 MB
   push their blobs in batches to `refs/heads/stillpress-upload-<key>` (one commit per batch, so the server keeps them),
-  then a final push moves the branch and deletes the upload branch, atomically where the server supports it.
+  then a final push moves the branch; the upload branch is deleted in a push of its own, so a server that refuses
+  (it might be the default branch) only costs a warning. In an empty repository the real branch is created first,
+  with a commit holding only the marker files, because hosts such as GitHub make the first branch pushed the default
+  and refuse to delete it. The test Git server's hooks copy both of those GitHub rules.
 - **Netlify** (D16) uses the API's file-digest deploys: one `async` deploy listing every file's SHA-1, then uploads of only
   the hashes Netlify reports missing. SHA-1s are kept per path beside the SHA-256 records, so unchanged files aren't
   re-hashed. A site with no changes since the last deploy creates no deploy (Netlify allows 100 API deploys a day). The open

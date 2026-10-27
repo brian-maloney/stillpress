@@ -1,0 +1,17 @@
+#!/bin/sh
+# Test-only: like GitHub, the first branch pushed into an empty repository becomes its default branch.
+current=$(git symbolic-ref -q HEAD)
+if git rev-parse -q --verify "$current" >/dev/null; then
+	exit 0
+fi
+while read -r old new ref; do
+	case "$ref" in
+		refs/heads/*)
+			if [ "$new" != "0000000000000000000000000000000000000000" ]; then
+				git symbolic-ref HEAD "$ref"
+				exit 0
+			fi
+			;;
+	esac
+done
+exit 0

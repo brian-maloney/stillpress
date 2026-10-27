@@ -237,6 +237,8 @@ final class GitTest extends \WP_UnitTestCase {
 
 	public function test_deleted_branch_is_published_again_in_full(): void {
 		$this->deploy();
+		// gh-pages is the default branch now, which (as on GitHub) can't be deleted: point HEAD elsewhere first.
+		$this->assertSame( 'set', trim( $this->inspect( 'sethead', array( 'ref' => 'main' ) ) ) );
 		$client = new RemoteClient( $this->transport, 'https://git.test/repos/' . $this->repo . '.git', 'deploy', self::TOKEN );
 		$info   = $client->discover();
 		$this->assertSame( array( 'refs/heads/gh-pages' => 'ok' ), $client->push( array( array( $info['refs']['refs/heads/gh-pages'], RemoteClient::ZERO, 'refs/heads/gh-pages' ) ), '', $info['caps'] ) );
@@ -253,15 +255,16 @@ final class GitTest extends \WP_UnitTestCase {
 		}
 		$deployer    = $this->deployer;
 		$this->after = static function ( $request ) use ( $deployer ) {
-			if ( 'POST' === $request['method'] ) {
-				$deployer->set_deadline( microtime( true ) - 1 ); // Stop after the first upload batch.
+			// Stop after the first upload batch (the push that names the temporary branch).
+			if ( 'POST' === $request['method'] && false !== strpos( $request['body'], 'refs/heads/stillpress-upload-' ) ) {
+				$deployer->set_deadline( microtime( true ) - 1 );
 			}
 		};
 		$result      = $this->deploy();
 		$this->assertFalse( $result->done );
-		$this->assertCount( 1, $this->pushes );
+		$this->assertCount( 2, $this->pushes, 'The branch is created first (the repository was empty), then one batch.' );
 		$this->assertStringContainsString( 'refs/heads/stillpress-upload-', $this->inspect( 'refs', array() ) );
-		$this->assertStringNotContainsString( 'refs/heads/gh-pages', $this->inspect( 'refs', array() ) );
+		$this->assertSame( array( '.nojekyll', '.stillpress-target' ), $this->tree(), 'Only the marker files are on the branch so far.' );
 
 		$this->after  = null;
 		$this->pushes = array();
@@ -269,13 +272,50 @@ final class GitTest extends \WP_UnitTestCase {
 		$result = $this->deploy();
 		$this->assertTrue( $result->done );
 		$this->assertSame( 6, $result->added );
-		$this->assertCount( 1, $this->pushes, 'The rest fits in the final push.' );
+		$this->assertCount( 2, $this->pushes, 'The final push, then deleting the temporary branch.' );
 		$this->assertLessThan( 16 * 1048576, $this->pushes[0], 'Blobs from the first batch are not sent again.' );
 		$refs = $this->inspect( 'refs', array() );
 		$this->assertStringContainsString( 'refs/heads/gh-pages', $refs );
 		$this->assertStringNotContainsString( 'stillpress-upload-', $refs, 'The temporary branch is deleted.' );
 		$this->assertContains( 'big3.bin', $this->tree() );
+		$this->assertCount( 2, $this->log(), 'The preparing commit, then the site.' );
 		$this->assertStringContainsString( 'exit=0', $this->inspect( 'fsck', array() ) );
+	}
+
+	public function test_large_first_deploy_leaves_the_branch_as_default(): void {
+		// Like GitHub, the test server makes the first branch pushed into an empty repository its default branch and
+		// refuses to delete it. Uploading batches first made the temporary branch the default, which then could not be
+		// deleted, and the publish failed.
+		for ( $i = 1; $i <= 3; $i++ ) {
+			file_put_contents( $this->cache . "/big{$i}.bin", random_bytes( 7 * 1048576 ) );
+		}
+		$this->assertTrue( $this->deploy()->done );
+		$this->assertSame( 'refs/heads/gh-pages', trim( $this->inspect( 'head', array() ) ) );
+		$this->assertStringNotContainsString( 'stillpress-upload-', $this->inspect( 'refs', array() ) );
+	}
+
+	public function test_temporary_branch_the_server_keeps_only_warns(): void {
+		// The state the first GitHub test left behind: the temporary branch became the default branch.
+		for ( $i = 1; $i <= 3; $i++ ) {
+			file_put_contents( $this->cache . "/big{$i}.bin", random_bytes( 7 * 1048576 ) );
+		}
+		$this->inspect( 'create', array() );
+		$deployer    = $this->deployer;
+		$this->after = static function ( $request ) use ( $deployer ) {
+			if ( 'POST' === $request['method'] && false !== strpos( $request['body'], 'refs/heads/stillpress-upload-' ) ) {
+				$deployer->set_deadline( microtime( true ) - 1 );
+			}
+		};
+		$this->deploy();
+		preg_match( '#refs/heads/(stillpress-upload-[0-9a-f]+)#', $this->inspect( 'refs', array() ), $m );
+		$this->assertSame( 'set', trim( $this->inspect( 'sethead', array( 'ref' => $m[1] ) ) ) );
+
+		$this->after = null;
+		$deployer->set_deadline( 0 );
+		$result = $this->deploy();
+		$this->assertTrue( $result->done, 'The site is published even though the temporary branch stays.' );
+		$this->assertContains( 'big3.bin', $this->tree() );
+		$this->assertStringContainsString( $m[1], $this->inspect( 'refs', array() ) );
 	}
 
 	public function test_certificates_are_verified_against_the_chosen_bundle(): void {

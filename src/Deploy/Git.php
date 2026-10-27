@@ -289,6 +289,16 @@ final class Git implements ConfigurableDeployerInterface, ResumableDeployerInter
 			// The branch already holds exactly this site.
 		}
 
+		// In an empty repository, hosts such as GitHub make the first branch pushed the default branch, and refuse to
+		// delete the default branch. Batches go to a temporary branch, so create the real branch first, with a commit
+		// that holds only the marker files; the site's commit follows on top of it.
+		if ( '' === $head && ! $info['refs'] && array_sum( array_column( $send, 'size' ) ) > self::BATCH_BYTES ) {
+			$head          = $this->prepare_branch( $client, $info['caps'], $ref );
+			$state['head'] = $head;
+			// Ours: a resumed deploy must not take it for someone else's commit.
+			$this->save_state( $state );
+		}
+
 		// Upload everything but the last batch to the temporary branch, saving progress after each batch.
 		while ( array_sum( array_column( $send, 'size' ) ) > self::BATCH_BYTES ) {
 			if ( $this->out_of_time() ) {
@@ -323,18 +333,22 @@ final class Git implements ConfigurableDeployerInterface, ResumableDeployerInter
 		}
 		$objects[] = array( 'commit', $commit );
 
-		$commands = array( array( '' === $head ? RemoteClient::ZERO : $head, $id, $ref ) );
-		if ( '' !== $state['upload_head'] ) {
-			$commands[] = array( $state['upload_head'], RemoteClient::ZERO, $state['upload_ref'] );
-		}
-		$answer = $client->push( $commands, Pack::build( $objects ), $info['caps'] );
+		$answer = $client->push( array( array( '' === $head ? RemoteClient::ZERO : $head, $id, $ref ) ), Pack::build( $objects ), $info['caps'] );
 		unset( $objects );
 		if ( 'ok' !== ( $answer[ $ref ] ?? '' ) ) {
 			/* translators: 1: branch, 2: reason from the Git server. */
 			throw new \RuntimeException( sprintf( __( 'The Git server refused to update %1$s: %2$s', 'stillpress' ), $ref, $answer[ $ref ] ?? __( 'no answer', 'stillpress' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
 		}
-		if ( '' !== $state['upload_head'] && 'ok' !== ( $answer[ $state['upload_ref'] ] ?? '' ) ) {
-			$logger->warning( sprintf( 'Published, but could not delete the temporary branch %s. Delete it by hand.', $state['upload_ref'] ) );
+		// The temporary branch goes in a push of its own: if the server refuses to delete it, the site is still out.
+		if ( '' !== $state['upload_head'] ) {
+			try {
+				$gone = $client->push( array( array( $state['upload_head'], RemoteClient::ZERO, $state['upload_ref'] ) ), '', $info['caps'] );
+			} catch ( \RuntimeException $e ) {
+				$gone = array();
+			}
+			if ( 'ok' !== ( $gone[ $state['upload_ref'] ] ?? '' ) ) {
+				$logger->warning( sprintf( 'Published, but the Git server refused to delete the temporary branch %1$s (%2$s). Delete it by hand.', $state['upload_ref'], $gone[ $state['upload_ref'] ] ?? 'no answer' ) );
+			}
 		}
 
 		foreach ( $changed as $path => $hash ) {
@@ -400,6 +414,38 @@ final class Git implements ConfigurableDeployerInterface, ResumableDeployerInter
 		foreach ( $batch as $path => $item ) {
 			$queue->set( (string) $path, $item['blob'] );
 		}
+	}
+
+	/**
+	 * Creates the branch with a commit holding only the marker files.
+	 *
+	 * @param RemoteClient $client Client.
+	 * @param string[]     $caps   Server capabilities.
+	 * @param string       $ref    Branch ref.
+	 * @return string Commit ID.
+	 * @throws \RuntimeException When the server refuses it.
+	 */
+	private function prepare_branch( RemoteClient $client, array $caps, string $ref ): string {
+		$objects = array();
+		$files   = array();
+		foreach ( self::extras() as $path => $contents ) {
+			$files[ $path ] = Objects::blob_id( $contents );
+			$objects[]      = array( 'blob', $contents );
+		}
+		$root   = Objects::trees( $files );
+		$author = TargetConfig::value( $this, 'author_name' ) . ' <' . TargetConfig::value( $this, 'author_email' ) . '>';
+		$commit = Objects::commit( $root['root'], array(), $author, time(), 'Prepare branch for Stillpress' );
+		foreach ( $root['trees'] as $body ) {
+			$objects[] = array( 'tree', $body );
+		}
+		$objects[] = array( 'commit', $commit );
+		$id        = Objects::id( 'commit', $commit );
+		$answer    = $client->push( array( array( RemoteClient::ZERO, $id, $ref ) ), Pack::build( $objects ), $caps );
+		if ( 'ok' !== ( $answer[ $ref ] ?? '' ) ) {
+			/* translators: 1: branch, 2: reason from the Git server. */
+			throw new \RuntimeException( sprintf( __( 'The Git server refused to create %1$s: %2$s', 'stillpress' ), $ref, $answer[ $ref ] ?? __( 'no answer', 'stillpress' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Plain text.
+		}
+		return $id;
 	}
 
 	/**
