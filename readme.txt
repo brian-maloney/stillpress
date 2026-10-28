@@ -15,15 +15,17 @@ Stillpress turns your WordPress site into plain HTML, CSS and images that any we
 
 * **Works with your theme and plugins.** Pages are rendered by your own site, exactly as a visitor sees them, so block themes, classic themes and page builders all work.
 * **Only what changed is rebuilt.** While a page renders, Stillpress records which posts, terms, authors and settings it used. Edit a post, and only the pages that show it are rebuilt and redeployed.
-* **One choice to get started.** Activate, pick where the static site goes (a folder on your server or a ZIP file), and publish.
+* **One choice to get started.** Activate, pick where the static site goes, and publish.
+* **Publishes where you host.** A folder on your server, a ZIP file, Amazon S3 or any S3-compatible storage (with CloudFront invalidation), another server over SFTP, a Git repository for GitHub Pages, GitLab Pages and similar hosts, Netlify, or Cloudflare. Each target is configured on the settings screen or from WP-CLI, and credentials are stored encrypted and never shown again.
+* **Publishes when you want.** Right after you save, at set times of day, or only when you click Publish. A full rebuild runs nightly (or weekly, or never) at a time you choose.
 * **Feels like WordPress.** A "Publish to static" button in the editor, a status in the admin bar, a Site Health check, and a WP-CLI command for everything.
-* **No upsells.** There is no premium version, no license key and no tracking. The plugin never contacts any outside service.
+* **No upsells.** There is no premium version, no license key and no tracking. The plugin contacts no outside service except the deploy target you choose.
 
-Links, images, srcset, stylesheets, scripts, structured data, feeds and sitemaps are all rewritten to your public address. A 404 page and a `_redirects` file are generated for you.
+Links, images, srcset, stylesheets, scripts, structured data, feeds and sitemaps are all rewritten to your public address. A 404 page, a `_redirects` file and a `_headers` file (so feeds keep their type on Netlify and Cloudflare) are generated for you.
 
 = For developers =
 
-Every stage has actions and filters (see `docs/HOOKS.md`), and deploy targets are pluggable through a small interface. All features are available from WP-CLI: `wp stillpress build`, `status`, `why`, `deploy`, `zip`, `settings`, `doctor` and more.
+Every stage has actions and filters (see `docs/HOOKS.md`), and deploy targets are pluggable through a small interface. All features are available from WP-CLI: `wp stillpress build`, `status`, `why`, `deploy`, `zip`, `settings`, `target`, `secret`, `schedule`, `doctor` and more.
 
 == Installation ==
 
@@ -43,7 +45,15 @@ No. Every feature is free and stays free.
 
 = Does the plugin send data anywhere? =
 
-No. It only makes requests to your own site, to render pages. Remote deploy targets, when added, contact only the host you configure.
+No. It makes requests to your own site, to render pages, and to the deploy target you configure (for example your S3 bucket or Netlify site), to publish. Nothing else, and nothing until you set a target up.
+
+= How are deploy credentials stored? =
+
+Encrypted in the database, with a key derived from the security keys in wp-config.php, and never displayed again. You can also set any of them with a constant or an environment variable (for example `STILLPRESS_S3_SECRET_ACCESS_KEY`) so they are never stored at all. If the security keys change, saved credentials can no longer be read; Site Health says which ones to enter again.
+
+= Can it replace files that aren't its own? =
+
+No. On a folder, SFTP server or S3 bucket it only deletes files it published there itself, and a folder must be empty or marked as its own first. A Git branch or Cloudflare Worker that already has content from elsewhere is refused unless you allow replacing it.
 
 = What about forms, comments and search? =
 
@@ -54,6 +64,13 @@ They need a server, so on the static copy they don't work yet. Static search and
 Drafts, private posts and password-protected posts are never published. You can leave out more addresses in Settings.
 
 == Changelog ==
+
+= 0.2.0 (in development) =
+* Remote deploy targets: Amazon S3 and S3-compatible storage with CloudFront invalidation, SFTP, Git over HTTPS (GitHub Pages, GitLab Pages and others), Netlify, and Cloudflare (Workers static assets). Large deploys resume across background runs.
+* Encrypted storage for deploy credentials, with constant and environment-variable overrides, and settings panels for each target, including a connection test.
+* Publish at set times, right after changes, or only by hand; full rebuilds at a chosen time and weekday, kept on the local clock across daylight-saving changes.
+* Feeds are saved as feed/index.html so /feed/ works on static hosts, with their real type sent wherever the host allows.
+* Fixes: redirects that started answering 404 left the _redirects file; deploy errors from WP-CLI showed a "critical error" page instead of the reason.
 
 = 0.1.0 =
 * First release: loopback renderer, URL rewriting, folder and ZIP deploys, dependency-tracked incremental builds, editor and admin bar integration, Site Health, WP-CLI.
