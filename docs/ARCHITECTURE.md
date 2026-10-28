@@ -98,7 +98,7 @@ UI, REST and CLI are thin adapters over one service layer, so everything the UI 
 
 ## Storage
 Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema version option: `builds`, `urls`, `deps`,
-`query_sigs`, `changes`, `manifest`, `log`. The build cache (rendered files) defaults to `wp-content/stillpress/cache/<site_id>/`
+`query_sigs`, `changes`, `manifest`, `log`, and for search `search_terms`, `search_docs`, `search_dirty`. The build cache (rendered files) defaults to `wp-content/stillpress/cache/<site_id>/`
 (public content only; protected with index.php and .htaccess deny). Uninstall drops tables and options. It never deletes a deploy target.
 
 **URL to file.** A URL ending in `/` (or without an extension) is saved as `<path>/index.html`, whatever its response
@@ -205,7 +205,13 @@ Built in by default (D20); Pagefind is an optional backend where a binary is sup
 - **Shards**: terms group by their first two characters; a group over the posting limit splits by one more character
   (`Search\ShardKeys`, pure). Finalizing rewrites only shards whose terms changed, plus `meta.json` (shard keys,
   document count, format version) and the document chunks (`id → path, title, excerpt`, grouped by URL row ID).
-  Everything lives under `stillpress-search/` in the output and deploys like any generated file.
+  Everything lives under `stillpress-search/` in the output and deploys like any generated file. The writer runs at
+  the start of finalizing, a group at a time within the slice budget; a full build marks every group dirty once, which
+  restores any file that went missing. The `search` setting (`builtin` or `off`) decides whether pages are indexed;
+  `off` removes the files and empties the tables. Changing it triggers a full rebuild, like any settings change.
+- **What is indexed**: `TextExtractor` reads the page with core's `WP_HTML_Tag_Processor`; nav, forms, scripts, media,
+  hidden and screen-reader-only elements, and `data-stillpress-search-ignore` are skipped. The
+  `stillpress_search_document` filter can change or drop (null) what a page contributes.
 
 ## Secrets
 `Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of

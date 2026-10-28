@@ -218,6 +218,15 @@ Filters redirect rules written to the `_redirects` file.
 
 Since 0.1.0. Fired in `src/Build/Generated.php`.
 
+### `stillpress_search_document`
+
+Filters what the static search index stores for a page. Return null to leave the page out of search.
+
+- `array{title:string,text:string,excerpt:string}|null $document` Title, searchable text and excerpt.
+- `string $url` Origin URL of the page.
+
+Since 0.3.0. Fired in `src/Search/PageIndexer.php`.
+
 ### `stillpress_settings`
 
 Filters the effective settings.

@@ -17,6 +17,7 @@ use Stillpress\Render\RenderResult;
 use Stillpress\Render\RenderToken;
 use Stillpress\Rewrite\OriginSet;
 use Stillpress\Rewrite\UrlRewriter;
+use Stillpress\Search\PageIndexer;
 use Stillpress\Storage\UrlRepository;
 use Stillpress\Support\Logger;
 
@@ -90,6 +91,13 @@ final class Processor {
 	private $build_id;
 
 	/**
+	 * Search indexer, or null when search is off.
+	 *
+	 * @var PageIndexer|null
+	 */
+	private $search;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param OriginSet     $origins    Origin addresses.
@@ -100,8 +108,9 @@ final class Processor {
 	 * @param UrlRepository $urls       URL repository.
 	 * @param Logger        $logger     Logger.
 	 * @param int           $build_id   Build ID.
+	 * @param PageIndexer   $search     Search indexer, or null when search is off.
 	 */
-	public function __construct( OriginSet $origins, UrlRewriter $rewriter, LinkExtractor $extractor, UrlClassifier $classifier, Cache $cache, UrlRepository $urls, Logger $logger, int $build_id ) {
+	public function __construct( OriginSet $origins, UrlRewriter $rewriter, LinkExtractor $extractor, UrlClassifier $classifier, Cache $cache, UrlRepository $urls, Logger $logger, int $build_id, ?PageIndexer $search = null ) {
 		$this->origins    = $origins;
 		$this->rewriter   = $rewriter;
 		$this->extractor  = $extractor;
@@ -110,6 +119,7 @@ final class Processor {
 		$this->urls       = $urls;
 		$this->logger     = $logger;
 		$this->build_id   = $build_id;
+		$this->search     = $search;
 	}
 
 	/**
@@ -258,6 +268,9 @@ final class Processor {
 		}
 
 		$this->publish( $row, $kind, $result->status, $result->headers['content-type'] ?? '', $relative, $hash, strlen( $body ), $deps_state );
+		if ( null !== $this->search && 'page' === $kind && 'text/html' === $mime ) {
+			$this->search->index( (int) $row['id'], (string) $row['url'], $body );
+		}
 		return array(
 			'outcome'    => 'published',
 			'discovered' => array_values( $discovered ),

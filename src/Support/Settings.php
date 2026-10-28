@@ -62,6 +62,8 @@ final class Settings {
 			'connect_to'                      => '',
 			'feeds'                           => 'main',
 			'max_urls'                        => 50000,
+			// off, or builtin: an index built in PHP and searched by the bundled script.
+			'search'                          => 'builtin',
 			// Per-deployer fields, see Deploy\TargetConfig.
 			'targets'                         => array(),
 		);
@@ -185,6 +187,9 @@ final class Settings {
 		$out['feeds'] = in_array( $feeds, array( 'none', 'main', 'all' ), true ) ? $feeds : $defaults['feeds'];
 
 		$out['max_urls'] = isset( $input['max_urls'] ) ? max( 1, min( 1000000, (int) $input['max_urls'] ) ) : $defaults['max_urls'];
+
+		$search        = isset( $input['search'] ) ? (string) $input['search'] : $defaults['search'];
+		$out['search'] = in_array( $search, array( 'off', 'builtin' ), true ) ? $search : $defaults['search'];
 
 		$out['targets'] = \Stillpress\Deploy\TargetConfig::sanitize( $input['targets'] ?? array() );
 

@@ -227,9 +227,10 @@ final class Generated {
 	 * @param string $pseudo   Pseudo-URL identifying the file.
 	 * @param string $relative Output path.
 	 * @param string $contents Contents; empty removes the file.
+	 * @param string $type     Content-Type.
 	 * @return void
 	 */
-	private function write_file( string $pseudo, string $relative, string $contents ): void {
+	public function write_file( string $pseudo, string $relative, string $contents, string $type = 'text/plain' ): void {
 		$id = $this->urls->ensure( $pseudo, 'generated', 'generated' );
 		if ( '' === $contents ) {
 			$this->pipeline->cache->delete( $relative );
@@ -245,7 +246,7 @@ final class Generated {
 				'path'          => $relative,
 				'content_hash'  => $hash,
 				'size'          => strlen( $contents ),
-				'content_type'  => 'text/plain',
+				'content_type'  => $type,
 				'deps_state'    => 'static',
 				'last_build_id' => $this->build_id,
 				'rendered_at'   => current_time( 'mysql', true ),

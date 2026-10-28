@@ -15,7 +15,7 @@ namespace Stillpress\Storage;
 final class Schema {
 
 	/** Bump when the table definitions change. */
-	const VERSION = 1;
+	const VERSION = 2;
 
 	/** Option holding the installed schema version. */
 	const OPTION = 'stillpress_schema_version';
@@ -25,7 +25,7 @@ final class Schema {
 	 *
 	 * @var string[]
 	 */
-	const TABLES = array( 'builds', 'urls', 'build_urls', 'deps', 'query_sigs', 'changes', 'log', 'target_files' );
+	const TABLES = array( 'builds', 'urls', 'build_urls', 'deps', 'query_sigs', 'changes', 'log', 'target_files', 'search_terms', 'search_docs', 'search_dirty' );
 
 	/**
 	 * Returns the full table name for a suffix.
@@ -161,6 +161,31 @@ path_hash char(40) NOT NULL,
 path text NOT NULL,
 content_hash char(64) NOT NULL,
 PRIMARY KEY  (target,path_hash)
+) $charset;";
+
+		// Search terms and keys compare byte for byte: a case- or accent-insensitive collation would merge terms the
+		// tokenizer keeps apart (ø and o), and sorts them differently from PHP.
+		$binary = $wpdb->has_cap( 'utf8mb4' ) ? 'CHARACTER SET utf8mb4 COLLATE utf8mb4_bin' : 'CHARACTER SET utf8 COLLATE utf8_bin';
+
+		$sql[] = "CREATE TABLE {$t['search_terms']} (
+term varchar(40) $binary NOT NULL,
+url_id bigint(20) unsigned NOT NULL,
+score tinyint(3) unsigned NOT NULL DEFAULT 0,
+PRIMARY KEY  (term,url_id),
+KEY url_id (url_id)
+) $charset;";
+
+		$sql[] = "CREATE TABLE {$t['search_docs']} (
+url_id bigint(20) unsigned NOT NULL,
+title text NOT NULL,
+excerpt text NOT NULL,
+PRIMARY KEY  (url_id)
+) $charset;";
+
+		$sql[] = "CREATE TABLE {$t['search_dirty']} (
+kind varchar(10) NOT NULL,
+dirty_key varchar(40) $binary NOT NULL,
+PRIMARY KEY  (kind,dirty_key)
 ) $charset;";
 
 		dbDelta( $sql );

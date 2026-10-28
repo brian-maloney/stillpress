@@ -12,6 +12,11 @@ use Stillpress\Deploy\Registry;
 use Stillpress\Deps\DependencyStore;
 use Stillpress\Deps\Invalidator;
 use Stillpress\Render\RenderToken;
+use Stillpress\Search\Index;
+use Stillpress\Search\IndexWriter;
+use Stillpress\Search\PageIndexer;
+use Stillpress\Search\TextExtractor;
+use Stillpress\Search\Tokenizer;
 use Stillpress\Storage\BuildRepository;
 use Stillpress\Storage\UrlRepository;
 use Stillpress\Support\Logger;
@@ -26,7 +31,7 @@ use Stillpress\Support\Logger;
  *     planning   – full builds: seed URLs and every published URL; incremental: URLs affected by changes;
  *                  urls: the URLs the caller listed.
  *     rendering  – fetch or copy queued URLs, write files, queue newly discovered URLs.
- *     finalizing – write generated files (_redirects, redirect pages).
+ *     finalizing – write the search index and generated files (_redirects, redirect pages).
  *     deploying  – make the deploy target match the cache.
  */
 final class Runner {
@@ -151,6 +156,9 @@ final class Runner {
 					break;
 
 				case 'finalizing':
+					if ( ! ( new IndexWriter( $pipeline, $this->urls, new Index(), $build ) )->write( $budget > 0 ? $start + $budget : 0.0 ) ) {
+						break; // Out of time; the index continues in the next slice.
+					}
 					( new Generated( $pipeline, $this->urls, $build_id ) )->write();
 					( new DependencyStore() )->prune_signatures();
 					$this->builds->merge_stats( $build_id, array( 'published' => $this->urls->published_counts() ) );
@@ -275,7 +283,8 @@ final class Runner {
 			return false;
 		}
 		$rows      = $this->urls->get_many( array_keys( $claimed ) );
-		$processor = new Processor( $pipeline->origins, $pipeline->rewriter, $pipeline->extractor, $pipeline->classifier, $pipeline->cache, $this->urls, $logger, $build_id );
+		$search    = 'builtin' === $pipeline->settings['search'] ? new PageIndexer( new TextExtractor(), new Tokenizer(), new Index() ) : null;
+		$processor = new Processor( $pipeline->origins, $pipeline->rewriter, $pipeline->extractor, $pipeline->classifier, $pipeline->cache, $this->urls, $logger, $build_id, $search );
 		$token     = RenderToken::for_site();
 		$requests  = array();
 		$results   = array();

@@ -47,6 +47,17 @@ final class ShardKeys {
 	}
 
 	/**
+	 * Returns the top-level group of a term: its first BASE_LENGTH characters. Groups are planned independently, so
+	 * a changed term only means writing its group's shards again.
+	 *
+	 * @param string $term Normalized term.
+	 * @return string
+	 */
+	public static function group( string $term ): string {
+		return self::prefix( $term, self::BASE_LENGTH );
+	}
+
+	/**
 	 * Returns the shard key a term belongs to, or null when no shard can hold it.
 	 *
 	 * @param string   $term Normalized term.
