@@ -1,0 +1,24 @@
+{
+	"description": "Search tokenizer examples. PHP (Search\\Tokenizer) and the bundled client must both produce these tokens (D20).",
+	"cases": [
+		{ "text": "Hello, World!", "tokens": [ "hello", "world" ] },
+		{ "text": "Café crème brûlée", "tokens": [ "cafe", "creme", "brulee" ] },
+		{ "text": "CAFÉ and café", "tokens": [ "cafe", "and", "cafe" ] },
+		{ "text": "Straße, Øresund, Æsir, łódź", "tokens": [ "straße", "øresund", "æsir", "łodz" ] },
+		{ "text": "Tiếng Việt", "tokens": [ "tieng", "viet" ] },
+		{ "text": "ΟΔΥΣΣΕΥΣ Ὀδυσσεύς", "tokens": [ "οδυσσευσ", "οδυσσευσ" ] },
+		{ "text": "Ёлка и йогурт", "tokens": [ "елка", "иогурт" ] },
+		{ "text": "İstanbul", "tokens": [ "istanbul" ] },
+		{ "text": "a I x 7 42 3.14 don't", "tokens": [ "42", "14", "don" ] },
+		{ "text": "WordPress 6.6+ and PHP 7.4", "tokens": [ "wordpress", "and", "php" ] },
+		{ "text": "東京タワー", "tokens": [ "東京", "京タ", "タワ", "ワー" ] },
+		{ "text": "がっこう", "tokens": [ "がっ", "っこ", "こう" ] },
+		{ "text": "iPhone用ケース", "tokens": [ "iphone", "用ケ", "ケー", "ース" ] },
+		{ "text": "日 本", "tokens": [ "日", "本" ] },
+		{ "text": "한국어 텍스트", "tokens": [ "한국어", "텍스트" ] },
+		{ "text": "हिन्दी भाषा", "tokens": [ "हिन्दी", "भाषा" ] },
+		{ "text": "مرحبا بالعالم", "tokens": [ "مرحبا", "بالعالم" ] },
+		{ "text": "x_y-z snake_case", "tokens": [ "snake", "case" ] },
+		{ "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ok", "tokens": [ "ok" ] }
+	]
+}

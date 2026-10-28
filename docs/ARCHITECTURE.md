@@ -194,6 +194,19 @@ server) serve these files as `text/html`, which feed readers handle (D19).
   in, which only tests do) on every handle. Requests applies its `verify` option to single requests only, so the bundle is
   set through the `curl.before_request` hook as well.
 
+## Search (static)
+Built in by default (D20); Pagefind is an optional backend where a binary is supplied or the target builds in CI.
+- **Tokenizer** (`Search\Tokenizer`, pure): lowercase, fold accents, split into letter/digit runs, drop single
+  characters, index Han/Hiragana/Katakana runs as overlapping pairs. The bundled client implements the same rules, and
+  both are checked against `tests/fixtures/search-tokenize.json`.
+- **Per-page terms**: when an HTML page is written, its searchable text (main content region, else the body minus
+  header, nav, footer, script, style) is tokenized and stored with per-term scores (title hits weigh more) against the
+  page's URL row; the highest-scoring terms are kept up to a cap. Removing a page removes its terms.
+- **Shards**: terms group by their first two characters; a group over the posting limit splits by one more character
+  (`Search\ShardKeys`, pure). Finalizing rewrites only shards whose terms changed, plus `meta.json` (shard keys,
+  document count, format version) and the document chunks (`id → path, title, excerpt`, grouped by URL row ID).
+  Everything lives under `stillpress-search/` in the output and deploys like any generated file.
+
 ## Secrets
 `Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of
 the same name → the `stillpress_secrets` option (autoload off), sealed by `Security\SecretBox` with sodium `secretbox`. Each slot's

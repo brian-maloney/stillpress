@@ -240,3 +240,32 @@ Where a host decides by extension alone, feeds are served as `text/html`; feed r
 content. The e2e static server now behaves like a real host. Existing sites move to the new paths at their next full
 build, and deployers delete the old `index.xml` files as usual.
 
+
+## D20. Static search: an index built in PHP from the published pages, kept in the database, written as shards
+
+Search on the static copy needs an index made at publish time and a client that reads it. The ready-made tool, Pagefind,
+is a compiled binary: plugins hosted on WordPress.org may not ship or download executables, and most hosts can't run
+one, so it can only be an option where the user supplies the binary or the deploy target builds the site itself (CI).
+The default is our own: PHP builds the index, a small bundled script (unminified, no build step) searches it.
+
+- **Source: the published HTML, not the posts.** Text comes from each rendered page (the main content region when the
+  theme marks one, `<main>` or `[data-stillpress-search]`, else the body without header, nav, footer, script and style).
+  That covers page builders, archives and anything a plugin prints, and the index can't hold text that isn't on the
+  public site. Pages Stillpress doesn't publish (drafts, excluded, password-protected) are never rendered, so never indexed.
+- **Incremental in the database.** Each page's terms and scores are stored per URL when it is rendered and replaced
+  when it is rendered again; removing a page removes its rows. Finalizing writes only the shards whose terms changed.
+  Holding the inverted index in PHP memory doesn't scale to the 50,000-URL limit; streaming it from a table ordered by
+  term does. Unique terms per page are capped (highest-scoring kept) so the table stays proportional to the site.
+- **Stable document IDs.** A page's document ID is its URL row ID, which survives rebuilds, so a new post changes only
+  its own terms' shards and one document chunk, not the whole index.
+- **Shards by term prefix.** Terms are grouped by their first two characters; a group with too many postings splits by
+  one more character, recursively. `meta.json` lists every shard key, so the client fetches only the shards a query
+  needs and never asks for a file that doesn't exist. File names are the hex of the key's UTF-8 bytes, so any script is
+  a safe path.
+- **One tokenizer, written twice.** PHP and the client must cut text the same way: lowercase, accents removed (NFD and
+  drop combining marks; without intl, WordPress's `remove_accents()`), runs of letters and digits, single characters
+  dropped, and Han/Hiragana/Katakana runs indexed as overlapping pairs because those scripts don't separate words.
+  Both implementations are tested against one shared table of examples (`tests/fixtures/search-tokenize.json`).
+
+No typo tolerance or stemming in the first version: both are language-specific, and the user can switch to Pagefind
+where it is available. Revisit if real sites show the table growing past what the cap intends.
