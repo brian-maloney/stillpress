@@ -101,6 +101,12 @@ Custom tables per site (`$wpdb->prefix`), managed with `dbDelta` and a schema ve
 `query_sigs`, `changes`, `manifest`, `log`. The build cache (rendered files) defaults to `wp-content/stillpress/cache/<site_id>/`
 (public content only; protected with index.php and .htaccess deny). Uninstall drops tables and options. It never deletes a deploy target.
 
+**URL to file.** A URL ending in `/` (or without an extension) is saved as `<path>/index.html`, whatever its response
+type, because static hosts map a folder request only to `index.html`; `/feed/` becomes `feed/index.html`. The real type
+is recorded with the URL: S3 and Cloudflare upload such files with it, and `Generated` writes it into `_headers` (one rule
+per path, at most 100, for Netlify and Cloudflare). Hosts that choose types by extension alone (GitHub Pages, a plain web
+server) serve these files as `text/html`, which feed readers handle (D19).
+
 ## Queue
 - Action Scheduler, bundled through Composer. It's GPL-3.0-or-later, and it resolves duplicate copies across plugins
   by version on its own. The combined distribution is GPLv3-compatible; our own code stays GPL-2.0-or-later. This goes

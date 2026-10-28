@@ -34,7 +34,7 @@ final class PathMapperTest extends TestCase {
 	 * @dataProvider provide_valid_mappings
 	 */
 	public function test_maps_url_paths_to_relative_files( string $url_path, string $type, string $expected ): void {
-		$this->assertSame( $expected, $this->mapper()->relative_path( $url_path, $type ) );
+		$this->assertSame( $expected, $this->mapper()->relative_path( $url_path ) );
 	}
 
 	public function provide_valid_mappings(): array {
@@ -45,10 +45,10 @@ final class PathMapperTest extends TestCase {
 			'no trailing slash'        => array( '/about', 'text/html', 'about/index.html' ),
 			'file with extension'      => array( '/robots.txt', 'text/plain', 'robots.txt' ),
 			'asset'                    => array( '/wp-content/uploads/2026/10/a.jpg', 'image/jpeg', 'wp-content/uploads/2026/10/a.jpg' ),
-			'feed directory'           => array( '/feed/', 'application/rss+xml; charset=UTF-8', 'feed/index.xml' ),
-			'atom feed'                => array( '/feed/atom/', 'application/atom+xml', 'feed/atom/index.xml' ),
-			'json directory'           => array( '/data/', 'application/ld+json', 'data/index.json' ),
-			'text directory'           => array( '/notes/', 'text/plain', 'notes/index.txt' ),
+			'feed directory'           => array( '/feed/', 'application/rss+xml; charset=UTF-8', 'feed/index.html' ),
+			'atom feed'                => array( '/feed/atom/', 'application/atom+xml', 'feed/atom/index.html' ),
+			'json directory'           => array( '/data/', 'application/ld+json', 'data/index.html' ),
+			'text directory'           => array( '/notes/', 'text/plain', 'notes/index.html' ),
 			'sitemap file'             => array( '/wp-sitemap.xml', 'application/xml', 'wp-sitemap.xml' ),
 			'percent-encoded space'    => array( '/wp-content/uploads/my%20file.pdf', 'application/pdf', 'wp-content/uploads/my file.pdf' ),
 			'unicode slug'             => array( '/%E6%97%A5%E6%9C%AC/', 'text/html', '日本/index.html' ),
@@ -64,7 +64,7 @@ final class PathMapperTest extends TestCase {
 	 */
 	public function test_rejects_hostile_url_paths( string $url_path ): void {
 		$this->expectException( UnsafePathException::class );
-		$this->mapper()->relative_path( $url_path, 'text/html' );
+		$this->mapper()->relative_path( $url_path );
 	}
 
 	public function provide_hostile_paths(): array {

@@ -64,6 +64,13 @@ final class Cloudflare implements ConfigurableDeployerInterface, ResumableDeploy
 	private $deadline = 0.0;
 
 	/**
+	 * Recorded types of directory indexes that aren't HTML (feeds), loaded when a deploy starts.
+	 *
+	 * @var array<string,array{url:string,type:string}>
+	 */
+	private $served = array();
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Transport|null $transport Transport; null to use the WordPress HTTP library.
@@ -183,13 +190,14 @@ final class Cloudflare implements ConfigurableDeployerInterface, ResumableDeploy
 		if ( null !== $problem ) {
 			throw new \RuntimeException( $problem ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Logged as plain text and escaped on display.
 		}
-		$key    = $this->target_key();
-		$files  = new TargetFiles( 'cff-' . $key );
-		$hashes = new TargetFiles( 'cfh-' . $key );
-		$held   = $files->all();
-		$known  = $hashes->all();
-		$source = new PathMapper( $source_root );
-		$result = new DeployResult();
+		$this->served = ( new \Stillpress\Storage\UrlRepository() )->directory_types();
+		$key          = $this->target_key();
+		$files        = new TargetFiles( 'cff-' . $key );
+		$hashes       = new TargetFiles( 'cfh-' . $key );
+		$held         = $files->all();
+		$known        = $hashes->all();
+		$source       = new PathMapper( $source_root );
+		$result       = new DeployResult();
 
 		$result->location = 'cloudflare:' . TargetConfig::value( $this, 'worker_name' );
 
@@ -361,7 +369,7 @@ final class Cloudflare implements ConfigurableDeployerInterface, ResumableDeploy
 			}
 			$body .= '--' . $boundary . "\r\n"
 				. 'Content-Disposition: form-data; name="' . $hash . '"; filename="' . $hash . "\"\r\n"
-				. 'Content-Type: ' . self::content_type( $local[ $hash ]['path'] ) . "\r\n\r\n"
+				. 'Content-Type: ' . $this->content_type( $local[ $hash ]['path'] ) . "\r\n\r\n"
 				. base64_encode( $contents ) . "\r\n"; // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- The API takes base64 parts.
 		}
 		$body .= '--' . $boundary . "--\r\n";
@@ -418,8 +426,8 @@ final class Cloudflare implements ConfigurableDeployerInterface, ResumableDeploy
 	 * @param string $path Relative path.
 	 * @return string
 	 */
-	private static function content_type( string $path ): string {
-		$type = S3::content_type( $path );
+	private function content_type( string $path ): string {
+		$type = S3::content_type( $path, $this->served );
 		return 'application/octet-stream' === $type ? 'application/null' : $type;
 	}
 

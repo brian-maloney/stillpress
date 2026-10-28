@@ -136,6 +136,14 @@ Filters option names whose change triggers a full rebuild.
 
 Since 0.1.0. Fired in `src/Deps/OptionRules.php`.
 
+### `stillpress_header_rules`
+
+Filters the rules written to the `_headers` file, which Netlify and Cloudflare read.
+
+- `array<int,array{0:string,1:array<string,string>}> $rules` URL path and the headers to send for it.
+
+Since 0.2.0. Fired in `src/Build/Generated.php`.
+
 ### `stillpress_ignored_options`
 
 Filters option names that are never recorded as dependencies and never trigger rebuilds.

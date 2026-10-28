@@ -23,6 +23,9 @@ use Stillpress\Support\Logger;
  */
 final class Generated {
 
+	/** Most rules Cloudflare reads from `_headers`. */
+	const MAX_HEADER_RULES = 100;
+
 	/**
 	 * Components.
 	 *
@@ -100,6 +103,46 @@ final class Generated {
 			}
 		}
 		$this->write_file( 'stillpress:generated/_redirects', '_redirects', $lines ? implode( "\n", $lines ) . "\n" : '' );
+		$this->write_headers();
+	}
+
+	/**
+	 * Writes `_headers` (read by Netlify and Cloudflare) so directory indexes that aren't HTML, such as feeds saved as
+	 * feed/index.html, are served with their real Content-Type. Cloudflare reads at most 100 rules, so the file stops
+	 * there, shortest paths (the main feeds) first; Cloudflare also gets the type with each upload.
+	 *
+	 * @return void
+	 */
+	private function write_headers(): void {
+		$rules = array();
+		foreach ( $this->urls->directory_types() as $file ) {
+			$path    = (string) wp_parse_url( $file['url'], PHP_URL_PATH );
+			$rules[] = array( $this->pipeline->origins->public_path_for( '' === $path ? '/' : $path ), array( 'Content-Type' => $file['type'] ) );
+		}
+
+		/**
+		 * Filters the rules written to the `_headers` file, which Netlify and Cloudflare read.
+		 *
+		 * @since 0.2.0
+		 *
+		 * @param array<int,array{0:string,1:array<string,string>}> $rules URL path and the headers to send for it.
+		 */
+		$rules = (array) apply_filters( 'stillpress_header_rules', $rules );
+
+		$blocks = array();
+		foreach ( array_slice( $rules, 0, self::MAX_HEADER_RULES ) as $rule ) {
+			if ( ! isset( $rule[0], $rule[1] ) || ! is_array( $rule[1] ) || preg_match( '/[\s]/', (string) $rule[0] ) ) {
+				continue;
+			}
+			$block = (string) $rule[0] . "\n";
+			foreach ( $rule[1] as $name => $value ) {
+				if ( preg_match( '/^[A-Za-z0-9\-]+$/', (string) $name ) && ! preg_match( '/[\r\n]/', (string) $value ) ) {
+					$block .= '  ' . $name . ': ' . $value . "\n";
+				}
+			}
+			$blocks[] = $block;
+		}
+		$this->write_file( 'stillpress:generated/_headers', '_headers', implode( "\n", $blocks ) );
 	}
 
 	/**

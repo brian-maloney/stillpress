@@ -225,3 +225,18 @@ they go back, a repeated time fires once. The publishing mode replaced the `auto
 `settings set auto_publish` from scripts map to `immediate` or `manual`. In scheduled mode a publishing time with
 nothing pending starts no build, so frequent times cost nothing on quiet days.
 
+## D19. Every folder URL is saved as index.html, with its real type recorded
+
+WordPress serves feeds at folder URLs (`/feed/`, `/category/news/feed/`, `/comments/feed/`), and every page links to them.
+Stillpress used to save non-HTML folder responses as `index.xml`, `index.json` or `index.txt`, but static hosts (S3,
+Netlify, Cloudflare, GitHub Pages) map a folder request only to `index.html`, so a live test on Cloudflare returned 404
+for `/feed/`. The local e2e server tried every index name, which hid it.
+
+The alternative, keeping `index.xml` and adding `_redirects` rewrites (`/feed/ /feed/index.xml 200`), works on Netlify and
+perhaps Cloudflare but can't on S3 or GitHub Pages. Saving `index.html` works everywhere; the type is the only cost.
+So the real Content-Type is recorded per URL and sent wherever a host lets us: S3 and Cloudflare per uploaded file,
+Netlify and Cloudflare through a generated `_headers` file (capped at Cloudflare's 100 rules, shortest paths first).
+Where a host decides by extension alone, feeds are served as `text/html`; feed readers detect RSS and Atom from the
+content. The e2e static server now behaves like a real host. Existing sites move to the new paths at their next full
+build, and deployers delete the old `index.xml` files as usual.
+

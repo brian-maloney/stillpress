@@ -55,7 +55,7 @@ final class FullBuildTest extends SystemTestCase {
 		$build = $this->build();
 		$files = $this->snapshot();
 
-		foreach ( array( 'index.html', 'first-story/index.html', 'about/index.html', 'category/news/index.html', 'feed/index.xml', 'robots.txt', 'wp-sitemap.xml', '404.html' ) as $expected ) {
+		foreach ( array( 'index.html', 'first-story/index.html', 'about/index.html', 'category/news/index.html', 'feed/index.html', 'robots.txt', 'wp-sitemap.xml', '404.html' ) as $expected ) {
 			$this->assertArrayHasKey( $expected, $files, "Missing {$expected}. Log:\n" . $this->log( (int) $build['id'] ) );
 		}
 		$this->assertArrayNotHasKey( 'secret-draft/index.html', $files );
@@ -118,6 +118,20 @@ final class FullBuildTest extends SystemTestCase {
 		$this->assertStringContainsString( '/gone https://example.org/elsewhere 302', $files['_redirects'] );
 		$this->assertStringContainsString( 'url=' . self::PUBLIC_URL . '/new-page/', $files['old-page/index.html'] );
 		$this->assertArrayHasKey( '404.html', $files );
+	}
+
+	public function test_feed_is_saved_as_index_html_with_its_type_in_headers(): void {
+		// Static hosts map "/feed/" only to feed/index.html; the real type goes in _headers and in each upload.
+		$this->build();
+		$files = $this->snapshot();
+		$this->assertArrayHasKey( 'feed/index.html', $files );
+		$this->assertArrayNotHasKey( 'feed/index.xml', $files );
+		$this->assertStringContainsString( '<rss', $files['feed/index.html'] );
+		$this->assertMatchesRegularExpression( '#^/feed/\n  Content-Type: application/rss\+xml#m', $files['_headers'] ?? '' );
+		$types = ( new \Stillpress\Storage\UrlRepository() )->directory_types();
+		$this->assertStringStartsWith( 'application/rss+xml', $types['feed/index.html']['type'] );
+		$this->assertStringStartsWith( 'application/rss+xml', \Stillpress\Deploy\S3::content_type( 'feed/index.html', $types ) );
+		$this->assertSame( 'text/html; charset=utf-8', \Stillpress\Deploy\S3::content_type( 'index.html', $types ) );
 	}
 
 	public function test_redirect_that_starts_answering_404_leaves_redirects(): void {

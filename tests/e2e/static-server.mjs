@@ -44,7 +44,8 @@ function resolveFile( urlPath ) {
 	}
 	const options = [ candidate ];
 	if ( path.endsWith( '/' ) || ! extname( path ) ) {
-		for ( const index of [ 'index.html', 'index.xml', 'index.json', 'index.txt' ] ) {
+		// Like real static hosts, a directory maps only to index.html.
+		for ( const index of [ 'index.html' ] ) {
 			options.push( join( candidate, index ) );
 		}
 	}

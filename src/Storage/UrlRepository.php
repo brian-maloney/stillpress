@@ -167,6 +167,33 @@ final class UrlRepository {
 	}
 
 	/**
+	 * Published directory indexes whose response isn't HTML, such as feeds: their file is index.html (so static hosts
+	 * find it), and this is the type they should be served with.
+	 *
+	 * @return array<string,array{url:string,type:string}> Output path => URL and Content-Type.
+	 */
+	public function directory_types(): array {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT url, path, content_type FROM %i WHERE content_hash IS NOT NULL AND (path = 'index.html' OR path LIKE %s) AND content_type NOT LIKE %s AND content_type <> '' ORDER BY LENGTH(path), path",
+				Schema::table( 'urls' ),
+				'%/index.html',
+				'text/html%'
+			),
+			ARRAY_A
+		);
+		$out  = array();
+		foreach ( (array) $rows as $row ) {
+			$out[ (string) $row['path'] ] = array(
+				'url'  => (string) $row['url'],
+				'type' => (string) $row['content_type'],
+			);
+		}
+		return $out;
+	}
+
+	/**
 	 * IDs of published rows of the given kinds.
 	 *
 	 * @param string[] $kinds Kinds.

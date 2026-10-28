@@ -68,15 +68,15 @@ final class PathMapper {
 	 * - Paths whose last segment has a file extension map to themselves ("/robots.txt" → "robots.txt").
 	 * - Other paths map to "<path>/index.<ext>", so "/about" and "/about/" produce the same file.
 	 *
-	 * The index extension comes from the content type: html for HTML (and unknown types), xml for XML feeds and
-	 * sitemaps, json for JSON, txt for plain text.
+	 * A directory index is always index.html, whatever the response type (a feed at "/feed/" too): static hosts
+	 * map a directory request only to index.html. The real type is recorded with the URL and given to hosts that
+	 * can serve it (per-object types, `_headers`); see DECISIONS.md D19.
 	 *
-	 * @param string $url_path     URL path, still percent-encoded, without query or fragment.
-	 * @param string $content_type Response Content-Type header, used for directory indexes.
+	 * @param string $url_path URL path, still percent-encoded, without query or fragment.
 	 * @return string Relative path using "/" separators, never starting with "/".
 	 * @throws UnsafePathException When the path can't be mapped safely.
 	 */
-	public function relative_path( string $url_path, string $content_type = 'text/html' ): string {
+	public function relative_path( string $url_path ): string {
 		if ( '' === $url_path ) {
 			$url_path = '/';
 		}
@@ -108,7 +108,7 @@ final class PathMapper {
 		if ( ! $is_directory && false !== $last && self::has_extension( $last ) ) {
 			$relative = implode( '/', $segments );
 		} else {
-			$segments[] = 'index.' . self::index_extension( $content_type );
+			$segments[] = 'index.html';
 			$relative   = implode( '/', $segments );
 		}
 
@@ -241,26 +241,6 @@ final class PathMapper {
 	 */
 	private static function has_extension( string $name ): bool {
 		return (bool) preg_match( '/\.[A-Za-z0-9]{1,8}$/', $name );
-	}
-
-	/**
-	 * Picks the directory index extension for a content type.
-	 *
-	 * @param string $content_type Content-Type header value.
-	 * @return string
-	 */
-	private static function index_extension( string $content_type ): string {
-		$type = strtolower( trim( explode( ';', $content_type )[0] ) );
-		if ( preg_match( '#^(application|text)/((rss|atom|rdf)\+)?xml$#', $type ) || 'application/xslt+xml' === $type ) {
-			return 'xml';
-		}
-		if ( 'application/json' === $type || preg_match( '#^application/[a-z0-9.\-]+\+json$#', $type ) ) {
-			return 'json';
-		}
-		if ( 'text/plain' === $type ) {
-			return 'txt';
-		}
-		return 'html';
 	}
 
 	/**

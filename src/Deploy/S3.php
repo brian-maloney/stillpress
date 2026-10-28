@@ -60,6 +60,13 @@ final class S3 implements ConfigurableDeployerInterface, ResumableDeployerInterf
 	private $deadline = 0.0;
 
 	/**
+	 * Recorded types of directory indexes that aren't HTML (feeds), loaded when a deploy starts.
+	 *
+	 * @var array<string,array{url:string,type:string}>
+	 */
+	private $served = array();
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Transport|null $transport Transport; null to use the WordPress HTTP library.
@@ -221,11 +228,12 @@ final class S3 implements ConfigurableDeployerInterface, ResumableDeployerInterf
 		if ( null !== $problem ) {
 			throw new \RuntimeException( $problem ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Logged as plain text and escaped on display.
 		}
-		$client = $this->s3();
-		$files  = new TargetFiles( $this->target_key() );
-		$held   = $files->all();
-		$source = new PathMapper( $source_root );
-		$result = new DeployResult();
+		$this->served = ( new \Stillpress\Storage\UrlRepository() )->directory_types();
+		$client       = $this->s3();
+		$files        = new TargetFiles( $this->target_key() );
+		$held         = $files->all();
+		$source       = new PathMapper( $source_root );
+		$result       = new DeployResult();
 
 		$result->location = 's3://' . TargetConfig::value( $this, 'bucket' ) . '/' . $this->prefix();
 
@@ -590,7 +598,7 @@ final class S3 implements ConfigurableDeployerInterface, ResumableDeployerInterf
 	 * @return array<string,string>
 	 */
 	private function object_headers( string $path ): array {
-		$headers = array( 'Content-Type' => self::content_type( $path ) );
+		$headers = array( 'Content-Type' => self::content_type( $path, $this->served ) );
 		$cache   = (string) TargetConfig::value( $this, 'cache_control' );
 		if ( '' !== $cache ) {
 			$headers['Cache-Control'] = $cache;
@@ -601,10 +609,16 @@ final class S3 implements ConfigurableDeployerInterface, ResumableDeployerInterf
 	/**
 	 * Content type from a file name. S3 serves objects with the type they were uploaded with.
 	 *
-	 * @param string $path Relative path.
+	 * @param string                                      $path   Relative path.
+	 * @param array<string,array{url:string,type:string}> $served Recorded types of directory indexes that aren't HTML
+	 *                                                     (UrlRepository::directory_types()).
 	 * @return string
 	 */
-	public static function content_type( string $path ): string {
+	public static function content_type( string $path, array $served = array() ): string {
+		if ( isset( $served[ $path ]['type'] ) ) {
+			return (string) $served[ $path ]['type'];
+			// A feed or other non-HTML response saved as index.html.
+		}
 		$text = array(
 			'html'        => 'text/html',
 			'htm'         => 'text/html',

@@ -460,7 +460,7 @@ final class Processor {
 		if ( null === $output ) {
 			throw new UnsafePathException( 'The URL is outside the public base path.' );
 		}
-		$relative = $this->cache->mapper()->relative_path( $output, $content_type );
+		$relative = $this->cache->mapper()->relative_path( $output );
 
 		/**
 		 * Filters the output path of a URL, relative to the output root.
