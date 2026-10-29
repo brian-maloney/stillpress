@@ -55,6 +55,7 @@ final class AdminActionsTest extends \WP_UnitTestCase {
 			array( 'handle_onboard' ),
 			array( 'handle_publish_post' ),
 			array( 'handle_download' ),
+			array( 'handle_form_receiver' ),
 		);
 	}
 

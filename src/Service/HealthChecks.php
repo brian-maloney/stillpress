@@ -39,6 +39,7 @@ final class HealthChecks {
 			'queue'      => $this->queue(),
 			'secrets'    => $this->secrets(),
 			'search'     => $this->search(),
+			'forms'      => $this->forms(),
 		);
 	}
 
@@ -250,6 +251,56 @@ final class HealthChecks {
 			/* translators: %s: Pagefind's version line. */
 			'label'       => sprintf( __( 'Pagefind indexes the static site (%s)', 'stillpress' ), $version ),
 			'description' => __( 'Each build runs Pagefind over the published pages and publishes its index with the site.', 'stillpress' ),
+		);
+	}
+
+	/**
+	 * Forms on the static site can reach a receiver, and the secrets they need are set.
+	 *
+	 * @return array<string,string>
+	 */
+	public function forms(): array {
+		$config   = new \Stillpress\Forms\Config();
+		$settings = admin_url( 'admin.php?page=stillpress-settings' );
+		$mode     = $config->mode();
+		if ( 'off' === $mode ) {
+			return array(
+				'status'      => 'good',
+				'label'       => __( 'Forms on the static site are off', 'stillpress' ),
+				'description' => __( 'Forms are published as they are and can\'t be sent from the static site. Turn on Forms in the settings to receive them.', 'stillpress' ),
+			);
+		}
+		$problems = array();
+		$critical = false;
+		if ( 'receiver' === $mode && '' === $config->endpoint() ) {
+			$critical   = true;
+			$problems[] = __( 'Enter the address of your receiver; until then forms are published unchanged.', 'stillpress' );
+		}
+		if ( 'site' === $mode && \Stillpress\Forms\Config::origin_of( home_url( '/' ) ) === $config->allowed_origin() ) {
+			$problems[] = __( 'The static site uses this site\'s own address, so forms would post to the static host. Send them to a receiver elsewhere, or publish the static site at another address.', 'stillpress' );
+		}
+		if ( null === $config->secret() && ( 'receiver' === $mode || '' !== $config->webhook() ) ) {
+			$problems[] = 'receiver' === $mode
+				? __( 'Set the shared secret, here and where the receiver runs: without it this site refuses every submission the receiver forwards.', 'stillpress' )
+				: __( 'Set the shared secret: the webhook gets nothing without it.', 'stillpress' );
+		}
+		if ( 'none' !== $config->captcha() && 'site' === $mode && null === $config->captcha_secret() ) {
+			$critical   = true;
+			$problems[] = __( 'Enter the captcha\'s secret key: without it every submission is refused.', 'stillpress' );
+		}
+		if ( $problems ) {
+			return array(
+				'status'      => $critical ? 'critical' : 'recommended',
+				'label'       => __( 'Forms on the static site need attention', 'stillpress' ),
+				'description' => implode( ' ', $problems ),
+				'action'      => $settings,
+			);
+		}
+		return array(
+			'status'      => 'good',
+			'label'       => __( 'Forms on the static site are received', 'stillpress' ),
+			/* translators: %s: receiver address. */
+			'description' => sprintf( __( 'Forms on the static site post to %s.', 'stillpress' ), $config->endpoint() ),
 		);
 	}
 

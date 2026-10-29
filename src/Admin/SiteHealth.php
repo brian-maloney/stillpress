@@ -32,7 +32,7 @@ final class SiteHealth {
 	 */
 	public static function tests( $tests ) {
 		$checks = new HealthChecks();
-		foreach ( array( 'permalinks', 'target', 'cache', 'page_cache', 'queue', 'search' ) as $id ) {
+		foreach ( array( 'permalinks', 'target', 'cache', 'page_cache', 'queue', 'search', 'forms' ) as $id ) {
 			$tests['direct'][ 'stillpress_' . $id ] = array(
 				'label' => __( 'Static publishing', 'stillpress' ),
 				'test'  => static function () use ( $checks, $id ) {

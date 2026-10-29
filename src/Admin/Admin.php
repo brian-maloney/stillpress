@@ -42,6 +42,7 @@ final class Admin {
 		add_action( 'admin_post_stillpress_onboard', array( self::class, 'handle_onboard' ) );
 		add_action( 'admin_post_stillpress_publish_post', array( self::class, 'handle_publish_post' ) );
 		add_action( 'admin_post_stillpress_download_zip', array( self::class, 'handle_download' ) );
+		add_action( 'admin_post_stillpress_form_receiver', array( self::class, 'handle_form_receiver' ) );
 		add_filter( 'plugin_action_links_' . plugin_basename( STILLPRESS_FILE ), array( self::class, 'action_links' ) );
 		SettingsPage::register();
 	}
@@ -229,6 +230,26 @@ final class Admin {
 		header( 'Content-Length: ' . (string) filesize( $file ) );
 		header( 'X-Content-Type-Options: nosniff' );
 		readfile( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- Streaming a large archive.
+		exit;
+	}
+
+	/**
+	 * Downloads a standalone form receiver with this site's settings filled in (never its secrets).
+	 *
+	 * @return void
+	 */
+	public static function handle_form_receiver(): void {
+		self::guard( 'form_receiver', Capabilities::MANAGE );
+		$kind = isset( $_GET['kind'] ) ? sanitize_key( wp_unslash( $_GET['kind'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- guard() checked the nonce.
+		if ( ! isset( \Stillpress\Forms\ReceiverExport::FILES[ $kind ] ) ) {
+			wp_die( esc_html__( 'Unknown receiver.', 'stillpress' ), '', array( 'response' => 400 ) );
+		}
+		$code = \Stillpress\Forms\ReceiverExport::build( $kind, new \Stillpress\Forms\Config() );
+		nocache_headers();
+		header( 'Content-Type: ' . ( 'php' === $kind ? 'application/x-httpd-php' : 'text/javascript' ) . '; charset=UTF-8' );
+		header( 'Content-Disposition: attachment; filename="' . \Stillpress\Forms\ReceiverExport::FILES[ $kind ] . '"' );
+		header( 'X-Content-Type-Options: nosniff' );
+		echo $code; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- A source file sent as a download.
 		exit;
 	}
 }

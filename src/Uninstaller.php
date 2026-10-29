@@ -51,6 +51,10 @@ final class Uninstaller {
 		Capabilities::revoke_all();
 
 		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like( 'stillpress_' ) . '%' ) );
+		// Form rate-limit counters and used relay signatures.
+		foreach ( array( '_transient_stillpress_', '_transient_timeout_stillpress_' ) as $prefix ) {
+			$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like( $prefix ) . '%' ) );
+		}
 		wp_cache_flush();
 
 		// Action Scheduler isn't loaded during uninstall; remove our actions from its tables directly.

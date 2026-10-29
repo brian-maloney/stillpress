@@ -31,6 +31,9 @@ final class SettingsPage {
 
 	const GROUP = 'stillpress';
 
+	/** Secret fields of the forms settings (Secrets slot "forms"). */
+	const FORM_SECRETS = array( 'secret', 'captcha_secret' );
+
 	/**
 	 * Registers hooks.
 	 *
@@ -77,6 +80,7 @@ final class SettingsPage {
 		add_settings_section( 'stillpress_deploy', __( 'Where to publish', 'stillpress' ), '__return_null', $page );
 		add_settings_section( 'stillpress_publishing', __( 'When to publish', 'stillpress' ), '__return_null', $page );
 		add_settings_section( 'stillpress_content', __( 'What to publish', 'stillpress' ), '__return_null', $page );
+		add_settings_section( 'stillpress_forms', __( 'Forms', 'stillpress' ), array( self::class, 'forms_intro' ), $page );
 		add_settings_section( 'stillpress_advanced', __( 'Advanced', 'stillpress' ), '__return_null', $page );
 
 		self::field( 'target', __( 'Destination', 'stillpress' ), 'stillpress_deploy', array( self::class, 'field_target' ) );
@@ -104,6 +108,12 @@ final class SettingsPage {
 		self::field( 'redirects', __( 'Redirects', 'stillpress' ), 'stillpress_content', array( self::class, 'field_redirects' ) );
 		self::field( 'feeds', __( 'Feeds', 'stillpress' ), 'stillpress_content', array( self::class, 'field_feeds' ) );
 		self::field( 'search', __( 'Search', 'stillpress' ), 'stillpress_content', array( self::class, 'field_search' ) );
+		self::field( 'forms', __( 'Receive forms', 'stillpress' ), 'stillpress_forms', array( self::class, 'field_forms' ) );
+		self::field( 'forms_endpoint', __( 'Receiver address', 'stillpress' ), 'stillpress_forms', array( self::class, 'field_forms_endpoint' ) );
+		self::field( 'forms_secret', __( 'Shared secret', 'stillpress' ), 'stillpress_forms', array( self::class, 'field_forms_secret' ) );
+		self::field( 'forms_email', __( 'Email for marked forms', 'stillpress' ), 'stillpress_forms', array( self::class, 'field_forms_email' ) );
+		self::field( 'forms_webhook', __( 'Webhook', 'stillpress' ), 'stillpress_forms', array( self::class, 'field_forms_webhook' ) );
+		self::field( 'forms_captcha', __( 'Captcha', 'stillpress' ), 'stillpress_forms', array( self::class, 'field_forms_captcha' ) );
 		self::field( 'concurrency', __( 'Parallel requests', 'stillpress' ), 'stillpress_advanced', array( self::class, 'field_concurrency' ) );
 		self::field( 'connect_to', __( 'Loopback address', 'stillpress' ), 'stillpress_advanced', array( self::class, 'field_connect_to' ) );
 		self::field( 'max_urls', __( 'Address limit', 'stillpress' ), 'stillpress_advanced', array( self::class, 'field_max_urls' ) );
@@ -139,8 +149,9 @@ final class SettingsPage {
 			$input = self::submitted_schedule( $input, $current );
 		}
 		if ( $from_form && ! self::can_edit_paths() ) {
-			$input['local_path'] = $current['local_path'] ?? '';
-			$input['connect_to'] = $current['connect_to'] ?? '';
+			$input['local_path']    = $current['local_path'] ?? '';
+			$input['connect_to']    = $current['connect_to'] ?? '';
+			$input['forms_webhook'] = $current['forms_webhook'] ?? '';
 		}
 		if ( $from_form ) {
 			$input['targets'] = self::submitted_targets( $input['targets'] ?? array(), $current['targets'] ?? array() );
@@ -270,18 +281,27 @@ final class SettingsPage {
 	private static function save_secrets( $secrets, $clear ): void {
 		$secrets = is_array( $secrets ) ? $secrets : array();
 		$clear   = is_array( $clear ) ? $clear : array();
+		$slots   = array();
 		foreach ( Registry::instance()->all() as $id => $deployer ) {
 			foreach ( TargetConfig::fields( $deployer ) as $name => $def ) {
-				if ( 'secret' !== $def['type'] || Secrets::SOURCE_NONE !== Secrets::pinned( $id, $name )[0] ) {
-					continue;
+				if ( 'secret' === $def['type'] ) {
+					$slots[] = array( $id, $name, $def );
 				}
-				// Secrets are taken as typed: passwords may contain any character. Only line endings are normalized.
-				$value = isset( $secrets[ $id ][ $name ] ) && is_string( $secrets[ $id ][ $name ] ) ? str_replace( "\r\n", "\n", $secrets[ $id ][ $name ] ) : '';
-				if ( '' !== trim( $value ) ) {
-					Secrets::set( $id, $name, $def['multiline'] ? trim( $value ) . "\n" : $value );
-				} elseif ( ! empty( $clear[ $id ][ $name ] ) ) {
-					Secrets::delete( $id, $name );
-				}
+			}
+		}
+		foreach ( self::FORM_SECRETS as $name ) {
+			$slots[] = array( \Stillpress\Forms\Config::SECRETS, $name, array( 'multiline' => false ) );
+		}
+		foreach ( $slots as list( $id, $name, $def ) ) {
+			if ( Secrets::SOURCE_NONE !== Secrets::pinned( $id, $name )[0] ) {
+				continue;
+			}
+			// Secrets are taken as typed: passwords may contain any character. Only line endings are normalized.
+			$value = isset( $secrets[ $id ][ $name ] ) && is_string( $secrets[ $id ][ $name ] ) ? str_replace( "\r\n", "\n", $secrets[ $id ][ $name ] ) : '';
+			if ( '' !== trim( $value ) ) {
+				Secrets::set( $id, $name, $def['multiline'] ? trim( $value ) . "\n" : $value );
+			} elseif ( ! empty( $clear[ $id ][ $name ] ) ) {
+				Secrets::delete( $id, $name );
 			}
 		}
 	}
@@ -590,6 +610,163 @@ final class SettingsPage {
 				'npx pagefind --site .'
 			)
 		) . '</p>';
+	}
+
+	/**
+	 * Introduction to the forms section.
+	 *
+	 * @return void
+	 */
+	public static function forms_intro(): void {
+		echo '<p>' . esc_html__( 'A static host can\'t run forms. Stillpress can send them somewhere that can: this site, or a small receiver you run elsewhere, which hands each submission back to this site. Contact Form 7, WPForms, Gravity Forms, comments and any form marked with data-stillpress-form are supported. Changing these settings rebuilds the whole site.', 'stillpress' ) . '</p>';
+	}
+
+	/**
+	 * Forms mode.
+	 *
+	 * @return void
+	 */
+	public static function field_forms(): void {
+		$options = array(
+			'off'      => __( 'Off: forms are published as they are and don\'t work', 'stillpress' ),
+			'site'     => __( 'This site receives them', 'stillpress' ),
+			'receiver' => __( 'A receiver I run elsewhere', 'stillpress' ),
+		);
+		echo '<select id="stillpress-forms" name="' . esc_attr( self::name( 'forms' ) ) . '">';
+		foreach ( $options as $value => $label ) {
+			echo '<option value="' . esc_attr( $value ) . '"' . selected( (string) Settings::get( 'forms' ), $value, false ) . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select>';
+		echo '<p class="description">' . esc_html(
+			sprintf(
+				/* translators: %s: address of the REST route. */
+				__( '"This site" needs this WordPress site to be reachable from the internet at its own address: forms post to %s.', 'stillpress' ),
+				rest_url( 'stillpress/v1/forms/submit' )
+			)
+		) . '</p>';
+	}
+
+	/**
+	 * Receiver address, with the receivers to download.
+	 *
+	 * @return void
+	 */
+	public static function field_forms_endpoint(): void {
+		printf(
+			'<input type="url" class="regular-text code" id="stillpress-forms-endpoint" name="%s" value="%s" placeholder="https://forms.example.org/stillpress-form.php">',
+			esc_attr( self::name( 'forms_endpoint' ) ),
+			esc_attr( (string) Settings::get( 'forms_endpoint' ) )
+		);
+		echo '<p class="description">' . esc_html__( 'Only for "A receiver I run elsewhere". Download one with this site\'s settings filled in, put it online, and enter its address here. It forwards each submission it accepts to this site, signed with the shared secret.', 'stillpress' ) . '</p>';
+		$downloads = array(
+			'php'        => __( 'PHP file (any PHP host)', 'stillpress' ),
+			'cloudflare' => __( 'Cloudflare Worker', 'stillpress' ),
+			'netlify'    => __( 'Netlify Function', 'stillpress' ),
+		);
+		$links     = array();
+		foreach ( $downloads as $kind => $label ) {
+			$links[] = '<a href="' . esc_url( Admin::action_url( 'form_receiver', array( 'kind' => $kind ) ) ) . '">' . esc_html( $label ) . '</a>';
+		}
+		echo '<p>' . esc_html__( 'Download a receiver:', 'stillpress' ) . ' ' . implode( ' · ', $links ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
+	}
+
+	/**
+	 * Shared secret.
+	 *
+	 * @return void
+	 */
+	public static function field_forms_secret(): void {
+		self::secret_box( 'secret', 'stillpress-forms-secret', __( 'Signs submissions a receiver forwards to this site, and copies sent to the webhook. Use a long random value (for example from "openssl rand -hex 32") and set the same value as STILLPRESS_FORMS_SECRET where the receiver runs.', 'stillpress' ) );
+	}
+
+	/**
+	 * Email for marked forms.
+	 *
+	 * @return void
+	 */
+	public static function field_forms_email(): void {
+		printf(
+			'<input type="email" class="regular-text" id="stillpress-forms-email" name="%s" value="%s" placeholder="%s">',
+			esc_attr( self::name( 'forms_email' ) ),
+			esc_attr( (string) Settings::get( 'forms_email' ) ),
+			esc_attr( (string) get_option( 'admin_email' ) )
+		);
+		echo '<p class="description">' . esc_html__( 'Gets the submissions of forms your theme marks with data-stillpress-form. Form plugins send their own email, as set up in each form.', 'stillpress' ) . '</p>';
+	}
+
+	/**
+	 * Webhook.
+	 *
+	 * @return void
+	 */
+	public static function field_forms_webhook(): void {
+		printf(
+			'<input type="url" class="regular-text code" id="stillpress-forms-webhook" name="%s" value="%s" placeholder="https://hooks.example.org/forms" %s>',
+			esc_attr( self::name( 'forms_webhook' ) ),
+			esc_attr( (string) Settings::get( 'forms_webhook' ) ),
+			disabled( ! self::can_edit_paths(), true, false )
+		);
+		$note = self::can_edit_paths() ? '' : __( 'Only a network administrator can change this.', 'stillpress' ) . ' ';
+		echo '<p class="description">' . esc_html( $note . __( 'Optional, https only. Gets a signed JSON copy of every accepted submission (needs the shared secret).', 'stillpress' ) ) . '</p>';
+	}
+
+	/**
+	 * Captcha provider, site key and secret key.
+	 *
+	 * @return void
+	 */
+	public static function field_forms_captcha(): void {
+		$options = array(
+			'none'      => __( 'None', 'stillpress' ),
+			'turnstile' => __( 'Cloudflare Turnstile', 'stillpress' ),
+			'hcaptcha'  => __( 'hCaptcha', 'stillpress' ),
+		);
+		echo '<select id="stillpress-forms-captcha" name="' . esc_attr( self::name( 'forms_captcha' ) ) . '">';
+		foreach ( $options as $value => $label ) {
+			echo '<option value="' . esc_attr( $value ) . '"' . selected( (string) Settings::get( 'forms_captcha' ), $value, false ) . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select>';
+		echo '<p class="description">' . esc_html__( 'Optional. These are outside services: visitors\' browsers load the provider\'s script on pages with forms, and each answer is checked with the provider, along with the visitor\'s IP address. Without one, forms are protected by a hidden field, the time the page was open and a limit per visitor.', 'stillpress' ) . '</p>';
+		printf(
+			'<p><label for="stillpress-forms-captcha-site-key">%s</label><br><input type="text" class="regular-text code" id="stillpress-forms-captcha-site-key" name="%s" value="%s"></p>',
+			esc_html__( 'Site key', 'stillpress' ),
+			esc_attr( self::name( 'forms_captcha_site_key' ) ),
+			esc_attr( (string) Settings::get( 'forms_captcha_site_key' ) )
+		);
+		echo '<p><label for="stillpress-forms-captcha-secret">' . esc_html__( 'Secret key', 'stillpress' ) . '</label><br>';
+		self::secret_box( 'captcha_secret', 'stillpress-forms-captcha-secret', __( 'With a receiver elsewhere, set it there as STILLPRESS_FORMS_CAPTCHA_SECRET instead.', 'stillpress' ) );
+		echo '</p>';
+	}
+
+	/**
+	 * A write-only box for a forms secret.
+	 *
+	 * @param string $field       Field in the "forms" secrets slot.
+	 * @param string $input_id    Element ID.
+	 * @param string $description Help text.
+	 * @return void
+	 */
+	private static function secret_box( string $field, string $input_id, string $description ): void {
+		$slot   = \Stillpress\Forms\Config::SECRETS;
+		$source = Secrets::source( $slot, $field );
+		$pinned = in_array( $source, array( Secrets::SOURCE_CONSTANT, Secrets::SOURCE_ENVIRONMENT ), true );
+		$saved  = Secrets::SOURCE_STORED === $source;
+		printf(
+			'<input type="password" class="regular-text" id="%s" name="%s" value="" autocomplete="new-password" spellcheck="false" aria-describedby="%s" placeholder="%s" %s>',
+			esc_attr( $input_id ),
+			esc_attr( Settings::OPTION . '[secrets][' . $slot . '][' . $field . ']' ),
+			esc_attr( $input_id . '-description' ),
+			esc_attr( $saved ? __( 'Saved. Leave empty to keep it.', 'stillpress' ) : '' ),
+			disabled( $pinned, true, false )
+		);
+		echo '<span class="description" id="' . esc_attr( $input_id . '-description' ) . '"> ' . esc_html( self::source_note( $slot, $field, $source ) . ' ' . $description ) . '</span>';
+		if ( $saved || Secrets::SOURCE_UNREADABLE === $source ) {
+			printf(
+				'<br><label><input type="checkbox" name="%s" value="1"> %s</label>',
+				esc_attr( Settings::OPTION . '[secrets_clear][' . $slot . '][' . $field . ']' ),
+				esc_html__( 'Remove the saved value', 'stillpress' )
+			);
+		}
 	}
 
 	/**
