@@ -62,7 +62,8 @@ final class Settings {
 			'connect_to'                      => '',
 			'feeds'                           => 'main',
 			'max_urls'                        => 50000,
-			// off, or builtin: an index built in PHP and searched by the bundled script.
+			// builtin: an index built in PHP and searched by the bundled script; pagefind: run the binary named by
+			// STILLPRESS_PAGEFIND_BINARY; pagefind_host: the host's build step runs Pagefind; off.
 			'search'                          => 'builtin',
 			// Per-deployer fields, see Deploy\TargetConfig.
 			'targets'                         => array(),
@@ -189,7 +190,7 @@ final class Settings {
 		$out['max_urls'] = isset( $input['max_urls'] ) ? max( 1, min( 1000000, (int) $input['max_urls'] ) ) : $defaults['max_urls'];
 
 		$search        = isset( $input['search'] ) ? (string) $input['search'] : $defaults['search'];
-		$out['search'] = in_array( $search, array( 'off', 'builtin' ), true ) ? $search : $defaults['search'];
+		$out['search'] = in_array( $search, array( 'off', 'builtin', 'pagefind', 'pagefind_host' ), true ) ? $search : $defaults['search'];
 
 		$out['targets'] = \Stillpress\Deploy\TargetConfig::sanitize( $input['targets'] ?? array() );
 

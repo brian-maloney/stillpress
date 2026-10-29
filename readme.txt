@@ -58,7 +58,11 @@ No. On a folder, SFTP server or S3 bucket it only deletes files it published the
 
 = Does search work on the static site? =
 
-Yes. Stillpress publishes a search index with your site, and your theme's search forms open a results window that searches it in the browser. Results include every published page (title and text from the page itself), and the index is updated along with the pages that change. You can turn it off under Settings → Search. Themes can choose what is searchable by marking elements with `data-stillpress-search`, or leave parts out with `data-stillpress-search-ignore`.
+Yes. Stillpress publishes a search index with your site, and your theme's search forms open a results window that searches it in the browser. Results include every published page (title and text from the page itself), and the index is updated along with the pages that change. You can turn it off under Settings → Search.
+
+= Can I use Pagefind instead? =
+
+Yes, if you have it. Stillpress doesn't include Pagefind, because it is a separate program. To run it on your server, set `STILLPRESS_PAGEFIND_BINARY` in wp-config.php to the full path of the `pagefind` program and choose "Pagefind, run on this server" under Settings → Search. If your host builds the site (a GitHub Actions workflow on the Git target, Netlify or Cloudflare Pages), choose "Pagefind, run by your host's build step" and add `npx pagefind --site .` to that build. Either way your search forms keep the same results window. Themes can choose what is searchable by marking elements with `data-stillpress-search`, or leave parts out with `data-stillpress-search-ignore`.
 
 = What about forms and comments? =
 
@@ -72,6 +76,7 @@ Drafts, private posts and password-protected posts are never published. You can 
 
 = 0.3.0 (in development) =
 * Static search: an index of every published page is built with the site and searched in the browser. Search forms and `?s=` links open a results window; only the index files a query needs are downloaded, and only the parts of the index that changed are redeployed.
+* Optional Pagefind search: run a Pagefind program you install (named in wp-config.php), or let your host's build step run it.
 
 = 0.2.0 (in development) =
 * Remote deploy targets: Amazon S3 and S3-compatible storage with CloudFront invalidation, SFTP, Git over HTTPS (GitHub Pages, GitLab Pages and others), Netlify, and Cloudflare (Workers static assets). Large deploys resume across background runs.

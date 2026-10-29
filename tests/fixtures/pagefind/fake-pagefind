@@ -1,0 +1,24 @@
+#!/bin/sh
+# Stands in for Pagefind in tests: answers --version, records its arguments and environment, and writes a small
+# bundle whose fragment name depends on how many pages it found.
+if [ "$1" = "--version" ]; then
+	echo "pagefind 0.0.0-fake"
+	exit 0
+fi
+args="$*"
+site=""
+out=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--site) site="$2"; shift 2 ;;
+		--output-path) out="$2"; shift 2 ;;
+		*) shift ;;
+	esac
+done
+pages=$(find "$site" -name '*.html' | wc -l | tr -d ' ')
+mkdir -p "$out/fragment"
+echo "export const fake = true;" > "$out/pagefind.js"
+echo "$pages" > "$out/fragment/pages-$pages.pf_fragment"
+echo "$args" > "$out/args.txt"
+env > "$out/env.txt"
+echo "Indexed $pages pages"

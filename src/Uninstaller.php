@@ -62,29 +62,7 @@ final class Uninstaller {
 			);
 		}
 
-		self::delete_tree( Paths::cache_dir() );
-		self::delete_tree( Paths::zip_dir() );
-	}
-
-	/**
-	 * Deletes a private directory tree without following symlinks.
-	 *
-	 * @param string $path Path.
-	 * @return void
-	 */
-	private static function delete_tree( string $path ): void {
-		if ( is_link( $path ) || is_file( $path ) ) {
-			wp_delete_file( $path );
-			return;
-		}
-		if ( ! is_dir( $path ) ) {
-			return;
-		}
-		foreach ( (array) scandir( $path ) as $entry ) {
-			if ( '.' !== $entry && '..' !== $entry ) {
-				self::delete_tree( $path . '/' . $entry );
-			}
-		}
-		rmdir( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Our own private directory.
+		Paths::delete_tree( Paths::cache_dir() );
+		Paths::delete_tree( Paths::zip_dir() );
 	}
 }

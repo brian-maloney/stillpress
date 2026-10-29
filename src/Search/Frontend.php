@@ -33,7 +33,7 @@ final class Frontend {
 	 * @return void
 	 */
 	public static function register(): void {
-		if ( null === Recorder::active() || 'builtin' !== Settings::get( 'search' ) ) {
+		if ( null === Recorder::active() || 'off' === Settings::get( 'search' ) ) {
 			return;
 		}
 		add_action( 'wp_enqueue_scripts', array( self::class, 'enqueue' ) );
@@ -64,11 +64,17 @@ final class Frontend {
 	 * @return array<string,mixed>
 	 */
 	public static function settings(): array {
+		$mode     = (string) Settings::get( 'search' );
+		$pagefind = in_array( $mode, array( 'pagefind', 'pagefind_host' ), true );
+		$public   = (string) wp_parse_url( \Stillpress\Build\Pipeline::public_url( Settings::all() ), PHP_URL_PATH );
 		$settings = array(
-			'base'   => home_url( '/' . IndexWriter::DIR . '/' ),
-			'style'  => add_query_arg( 'ver', Assets::version( 'assets/css/search.css' ), Assets::url( 'assets/css/search.css' ) ),
-			'limit'  => self::LIMIT,
-			'labels' => array(
+			'backend' => $pagefind ? 'pagefind' : 'builtin',
+			'base'    => home_url( '/' . ( $pagefind ? PagefindWriter::DIR : IndexWriter::DIR ) . '/' ),
+			// Pagefind's result addresses are paths from the site root; this puts the public site's folder in front.
+			'root'    => trailingslashit( '/' . ltrim( $public, '/' ) ),
+			'style'   => add_query_arg( 'ver', Assets::version( 'assets/css/search.css' ), Assets::url( 'assets/css/search.css' ) ),
+			'limit'   => self::LIMIT,
+			'labels'  => array(
 				'title'       => __( 'Search this site', 'stillpress' ),
 				'placeholder' => __( 'Search…', 'stillpress' ),
 				'close'       => __( 'Close', 'stillpress' ),
@@ -82,8 +88,9 @@ final class Frontend {
 		);
 
 		/**
-		 * Filters the settings of the static search client: index address, stylesheet address, result limit and
-		 * labels. Return an empty "style" to style the dialog in the theme instead.
+		 * Filters the settings of the static search client: backend ("builtin" or "pagefind"), index address, public
+		 * root path, stylesheet address, result limit and labels. Return an empty "style" to style the dialog in the
+		 * theme instead.
 		 *
 		 * @since 0.3.0
 		 *

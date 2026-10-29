@@ -63,3 +63,38 @@ test.describe( 'static search', () => {
 		await expect( dialog ).toBeHidden();
 	} );
 } );
+
+test.describe( 'static search with Pagefind', () => {
+	test.describe.configure( { mode: 'serial' } );
+	test.skip( ! themes.includes( 'block' ), 'Runs with the block theme (THEMES=block).' );
+
+	test.beforeAll( () => {
+		if ( ! process.env.SKIP_PREPARE ) {
+			prepare( 'block', { search: 'pagefind_host' } );
+		}
+	} );
+
+	test( 'the dialog searches the Pagefind bundle the host built', async ( { page } ) => {
+		const origin = [];
+		page.on( 'request', ( r ) => r.url().startsWith( ORIGIN ) && origin.push( r.url() ) );
+
+		await page.goto( STATIC + '/?s=fixture' );
+		const dialog = page.getByRole( 'dialog', { name: 'Search this site' } );
+		await expect( dialog.getByRole( 'status' ) ).toHaveText( /\d+ results/ );
+		const result = dialog.getByRole( 'link', { name: 'Fixture story 1', exact: true } );
+		await expect( result ).toBeVisible();
+		await expect( dialog.locator( 'p mark' ).first(), 'Pagefind marks matches in its excerpts.' ).toHaveText( /fixture/i );
+		expect( await dialog.locator( 'p script, p img' ).count() ).toBe( 0 );
+
+		await result.click();
+		await expect( page ).toHaveURL( STATIC + '/fixture-story-1/' );
+		expect( origin ).toEqual( [] );
+	} );
+
+	test( 'the 404 page is not a search result', async ( { page } ) => {
+		// Only the 404 page says "moved" ("…or it has been moved"), so any result would be that page.
+		await page.goto( STATIC + '/?s=moved' );
+		const dialog = page.getByRole( 'dialog', { name: 'Search this site' } );
+		await expect( dialog.getByRole( 'status' ) ).toHaveText( 'Nothing found for “moved”.' );
+	} );
+} );

@@ -11,6 +11,7 @@ use Stillpress\Build\Pipeline;
 use Stillpress\Build\Queue;
 use Stillpress\Deploy\Registry;
 use Stillpress\Render\LoopbackClient;
+use Stillpress\Search\Pagefind;
 use Stillpress\Security\Secrets;
 use Stillpress\Storage\Schema;
 use Stillpress\Support\Paths;
@@ -37,6 +38,7 @@ final class HealthChecks {
 			'page_cache' => $this->page_cache(),
 			'queue'      => $this->queue(),
 			'secrets'    => $this->secrets(),
+			'search'     => $this->search(),
 		);
 	}
 
@@ -203,6 +205,51 @@ final class HealthChecks {
 			'status'      => 'good',
 			'label'       => __( 'Saved deploy credentials are readable', 'stillpress' ),
 			'description' => __( 'Credentials saved in the database decrypt with this site\'s security keys.', 'stillpress' ),
+		);
+	}
+
+	/**
+	 * The search mode can work: in the "pagefind" mode the binary from wp-config.php must run.
+	 *
+	 * @return array<string,string>
+	 */
+	public function search(): array {
+		$mode = (string) Settings::get( 'search' );
+		if ( 'pagefind' !== $mode ) {
+			$descriptions = array(
+				'builtin'       => __( 'An index of every published page is built with the site and searched in the browser.', 'stillpress' ),
+				'pagefind_host' => __( 'Search forms use Pagefind files that your host\'s build step creates in /pagefind/. Static search shows an error if they are missing.', 'stillpress' ),
+				'off'           => __( 'Search is off, so search forms on the static site do nothing.', 'stillpress' ),
+			);
+			return array(
+				'status'      => 'good',
+				'label'       => __( 'Static search needs nothing from this server', 'stillpress' ),
+				'description' => $descriptions[ $mode ] ?? '',
+			);
+		}
+
+		$pagefind = Pagefind::configured();
+		$problem  = null === $pagefind
+			/* translators: %s: constant name. */
+			? sprintf( __( 'Set %s in wp-config.php to the full path of the pagefind program, or choose another search option.', 'stillpress' ), Pagefind::CONSTANT )
+			: $pagefind->problem();
+		$version = null === $problem ? $pagefind->version() : null;
+		if ( null === $problem && null === $version ) {
+			$problem = __( 'The program doesn\'t answer "pagefind --version". Check that it is Pagefind and built for this server.', 'stillpress' );
+		}
+		if ( null !== $problem ) {
+			return array(
+				'status'      => 'critical',
+				'label'       => __( 'Pagefind can\'t index the static site', 'stillpress' ),
+				'description' => $problem,
+				'action'      => admin_url( 'admin.php?page=stillpress-settings' ),
+			);
+		}
+		return array(
+			'status'      => 'good',
+			/* translators: %s: Pagefind's version line. */
+			'label'       => sprintf( __( 'Pagefind indexes the static site (%s)', 'stillpress' ), $version ),
+			'description' => __( 'Each build runs Pagefind over the published pages and publishes its index with the site.', 'stillpress' ),
 		);
 	}
 

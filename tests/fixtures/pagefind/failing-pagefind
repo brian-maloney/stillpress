@@ -1,0 +1,4 @@
+#!/bin/sh
+# Fails the way a broken run does: a message on standard error and a non-zero exit code.
+echo "Error: no HTML files found" >&2
+exit 3

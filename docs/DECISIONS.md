@@ -277,3 +277,26 @@ The default is our own: PHP builds the index, a small bundled script (unminified
 
 No typo tolerance or stemming in the first version: both are language-specific, and the user can switch to Pagefind
 where it is available. Revisit if real sites show the table growing past what the cap intends.
+
+## D21. Pagefind is optional, never shipped, and named only in wp-config.php
+
+Pagefind indexes faster than PHP, handles stemming and very large sites, and some people already use it. It is a
+compiled program, so Stillpress can't ship or download it (D20), and most shared hosts can't run programs at all. Two
+modes use it, and both keep the same search dialog, which talks to Pagefind's own API instead of our index:
+
+- **`pagefind`**: each build runs the binary named by `STILLPRESS_PAGEFIND_BINARY` over the build cache, into a private
+  temporary folder, and copies the bundle into `pagefind/` as generated files. A failed run keeps the published bundle.
+  The path is a constant rather than a setting because whoever sets it chooses a program the server runs: an
+  administrator who can't install plugins (`DISALLOW_FILE_MODS`) mustn't get that through a settings screen (T19).
+- **`pagefind_host`**: the host builds the site from what we deploy (GitHub Actions on the Git target, Netlify or
+  Cloudflare Pages builds) and runs `npx pagefind --site .` there. Stillpress publishes no index; the client expects
+  `/pagefind/` to exist and says search is unavailable if it doesn't.
+
+Pagefind indexes every HTML file, so pages that aren't content are marked `data-pagefind-ignore="all"` on `<body>`: the
+404 page and the meta-refresh pages of redirects. The marking is in every mode, so switching modes doesn't change the
+pages, and a host-side run sees it too. `[data-stillpress-search-ignore]` is passed as Pagefind's exclude selector, so
+themes mark ignored parts once for both indexes. Pagefind's result addresses are paths from the site root; the client
+sets Pagefind's `baseUrl` to the public site's path, for sites published under a folder.
+
+The run isn't sliced: Pagefind processes the whole site at once, and the build log records how long it took. A site
+whose run outgrows the slice budget would need its builds to run from the CLI. Revisit if that happens.

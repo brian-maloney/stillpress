@@ -52,9 +52,12 @@ export const PAGES = [ '/', '/fixture-story-1/', '/fixture-story-2/', '/about/',
 /**
  * Activates a theme setup, creates content, builds, and unpacks the static site for the local server.
  *
- * @param {string} name Key of THEMES.
+ * @param {string} name             Key of THEMES.
+ * @param {Object} [options]
+ * @param {string} [options.search] Search mode. With "pagefind_host", Pagefind runs over the unpacked site here, as a
+ *                                  host's build step would.
  */
-export function prepare( name ) {
+export function prepare( name, { search = 'builtin' } = {} ) {
 	const setup = THEMES[ name ];
 	wp( [ 'plugin', 'deactivate', 'elementor' ], { ignore: true } );
 	wp( [ 'plugin', 'activate', 'stillpress' ] );
@@ -75,7 +78,7 @@ export function prepare( name ) {
 	wp( [ 'stillpress', 'settings', 'set', 'public_url', STATIC ] );
 	wp( [ 'stillpress', 'settings', 'set', 'target', 'zip' ] );
 	wp( [ 'stillpress', 'settings', 'set', 'publish_mode', 'manual' ] );
-	wp( [ 'stillpress', 'settings', 'set', 'search', 'builtin' ] );
+	wp( [ 'stillpress', 'settings', 'set', 'search', search ] );
 	wp( [ 'stillpress', 'clean', '--yes' ] );
 
 	// Visit pages once so plugins that generate files on first view (page builders) have done so.
@@ -88,4 +91,7 @@ export function prepare( name ) {
 	wp( [ 'stillpress', 'zip', '--out=tests/e2e/.cache/site.zip' ] );
 	rmSync( join( CACHE, 'site' ), { recursive: true, force: true } );
 	execFileSync( 'unzip', [ '-q', '-o', join( CACHE, 'site.zip' ), '-d', join( CACHE, 'site' ) ] );
+	if ( 'pagefind_host' === search ) {
+		execFileSync( 'npx', [ 'pagefind', '--site', join( CACHE, 'site' ) ], { stdio: 'ignore' } );
+	}
 }

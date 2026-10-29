@@ -15,6 +15,8 @@ use Stillpress\Render\RenderToken;
 use Stillpress\Search\Index;
 use Stillpress\Search\IndexWriter;
 use Stillpress\Search\PageIndexer;
+use Stillpress\Search\Pagefind;
+use Stillpress\Search\PagefindWriter;
 use Stillpress\Search\TextExtractor;
 use Stillpress\Search\Tokenizer;
 use Stillpress\Storage\BuildRepository;
@@ -159,6 +161,7 @@ final class Runner {
 					if ( ! ( new IndexWriter( $pipeline, $this->urls, new Index(), $build ) )->write( $budget > 0 ? $start + $budget : 0.0 ) ) {
 						break; // Out of time; the index continues in the next slice.
 					}
+					( new PagefindWriter( $pipeline, $this->urls, $logger, $build_id, Pagefind::configured() ) )->write();
 					( new Generated( $pipeline, $this->urls, $build_id ) )->write();
 					( new DependencyStore() )->prune_signatures();
 					$this->builds->merge_stats( $build_id, array( 'published' => $this->urls->published_counts() ) );

@@ -5,6 +5,8 @@
  * named "s" (core's search form and search block, and most themes' forms) opens the dialog instead of asking a server,
  * and so does a page address with ?s=, which is where those forms send people when this script hasn't loaded.
  *
+ * With the "pagefind" backend the same dialog searches a Pagefind bundle instead, through Pagefind's own API.
+ *
  * The tokenizer must cut text exactly like Stillpress\Search\Tokenizer; both are tested against
  * tests/fixtures/search-tokenize.json. The file loads in Node too (module.exports), for those tests.
  */
@@ -249,6 +251,82 @@
 	}
 
 	/**
+	 * Searches a Pagefind bundle through its own API (D21): Pagefind ranks results and writes the excerpts.
+	 */
+	class PagefindSearcher {
+		/**
+		 * @param {string}                           base Address of the bundle folder, ending in "/".
+		 * @param {string}                           root Path of the public site, ending in "/" (Pagefind's baseUrl).
+		 * @param {function(string): Promise<Object>} load Imports a module (tests pass their own).
+		 */
+		constructor( base, root, load ) {
+			this.base = base;
+			this.root = root;
+			this.load = load || ( ( url ) => import( url ) );
+			this.ready = null;
+		}
+
+		/**
+		 * Loads and configures pagefind.js once (again after a failure).
+		 *
+		 * @return {Promise<Object>} Pagefind's API.
+		 */
+		api() {
+			if ( ! this.ready ) {
+				this.ready = this.load( this.base + 'pagefind.js' ).then( async ( pagefind ) => {
+					await pagefind.options( { baseUrl: this.root } );
+					return pagefind;
+				} );
+				this.ready.catch( () => {
+					this.ready = null;
+				} );
+			}
+			return this.ready;
+		}
+
+		/**
+		 * Searches, describing the first results.
+		 *
+		 * @param {string} query Query as typed.
+		 * @param {number} limit Most results to describe.
+		 * @return {Promise<{total:number, results:Object[]}>} Matches.
+		 */
+		async search( query, limit ) {
+			const pagefind = await this.api();
+			const found = await pagefind.search( query );
+			const data = await Promise.all( found.results.slice( 0, limit ).map( ( result ) => result.data() ) );
+			return {
+				total: found.results.length,
+				results: data.map( ( item ) => ( {
+					path: item.url,
+					title: ( item.meta && item.meta.title ) || item.url,
+					excerptHtml: item.excerpt || '',
+				} ) ),
+			};
+		}
+	}
+
+	/**
+	 * Adds an excerpt Pagefind marked up to an element, keeping only its text and <mark> elements.
+	 *
+	 * @param {Element} element Element.
+	 * @param {string}  html    Excerpt HTML.
+	 */
+	function appendExcerptHtml( element, html ) {
+		const template = document.createElement( 'template' );
+		template.innerHTML = html;
+		for ( const node of template.content.childNodes ) {
+			if ( 'MARK' === node.nodeName ) {
+				const mark = document.createElement( 'mark' );
+				mark.textContent = node.textContent;
+				element.append( mark );
+			} else {
+				element.append( node.textContent );
+			}
+		}
+	}
+
+	/**
 	 * Adds text to an element, marking the query's words.
 	 *
 	 * @param {Element}     element Element.
@@ -278,14 +356,17 @@
 	 */
 	function attach( settings ) {
 		const labels = settings.labels;
-		const searcher = new Searcher( settings.base, ( url ) =>
-			fetch( url, { credentials: 'same-origin' } ).then( ( response ) => {
-				if ( ! response.ok ) {
-					throw new Error( 'HTTP ' + response.status );
-				}
-				return response.json();
-			} )
-		);
+		const searcher =
+			'pagefind' === settings.backend
+				? new PagefindSearcher( settings.base, settings.root )
+				: new Searcher( settings.base, ( url ) =>
+					fetch( url, { credentials: 'same-origin' } ).then( ( response ) => {
+						if ( ! response.ok ) {
+							throw new Error( 'HTTP ' + response.status );
+						}
+						return response.json();
+					} )
+				);
 		let dialog = null;
 		let input = null;
 		let status = null;
@@ -410,7 +491,11 @@
 					link.href = result.path;
 					appendMarked( link, result.title || result.path, pattern );
 					item.append( link );
-					if ( result.excerpt ) {
+					if ( result.excerptHtml ) {
+						const excerpt = document.createElement( 'p' );
+						appendExcerptHtml( excerpt, result.excerptHtml );
+						item.append( excerpt );
+					} else if ( result.excerpt ) {
 						const excerpt = document.createElement( 'p' );
 						appendMarked( excerpt, result.excerpt, pattern );
 						item.append( excerpt );
@@ -448,5 +533,5 @@
 		}
 	}
 
-	return { normalize, tokenize, hex, keyFor, Searcher, attach };
+	return { normalize, tokenize, hex, keyFor, Searcher, PagefindSearcher, attach };
 } );

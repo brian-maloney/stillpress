@@ -83,6 +83,21 @@ final class SearchIndexTest extends SystemTestCase {
 		$this->assertFileExists( $this->target . '/wp-content/plugins/stillpress/assets/css/search.css', 'Found in the settings and copied, though only loaded on demand.' );
 	}
 
+	public function test_pages_pagefind_must_skip_are_marked(): void {
+		Settings::update(
+			array(
+				'search'    => 'pagefind_host',
+				'redirects' => '/old-page/ /new-page/ 301',
+			)
+		);
+		$this->build( 'full' );
+
+		$this->assertStringContainsString( 'data-pagefind-ignore="all"', (string) file_get_contents( $this->target . '/404.html' ) );
+		$this->assertStringContainsString( '<body data-pagefind-ignore="all">', (string) $this->page( '/old-page/' ) );
+		$this->assertStringContainsString( '"backend":"pagefind"', (string) $this->page( '/' ) );
+		$this->assertFileDoesNotExist( $this->target . '/stillpress-search/meta.json', 'The built-in index is not published alongside.' );
+	}
+
 	public function test_deleting_a_post_removes_it_from_search_incrementally(): void {
 		$id = wp_insert_post(
 			array(

@@ -255,6 +255,10 @@ final class Processor {
 			 * @param string $url  Origin URL.
 			 */
 			$body = (string) apply_filters( 'stillpress_output', $body, $mime, $row['url'] );
+
+			if ( '404' === $kind && 'text/html' === $mime ) {
+				$body = self::exclude_from_pagefind( $body );
+			}
 		}
 
 		try {
@@ -504,7 +508,22 @@ final class Processor {
 		return '<!doctype html><html><head><meta charset="utf-8"><title>' . esc_html__( 'Redirecting…', 'stillpress' ) . '</title>'
 			. '<meta name="robots" content="noindex"><link rel="canonical" href="' . $url . '">'
 			. '<meta http-equiv="refresh" content="0; url=' . $url . '"></head>'
-			. '<body><p><a href="' . $url . '">' . esc_html( $target ) . '</a></p></body></html>' . "\n";
+			. '<body data-pagefind-ignore="all"><p><a href="' . $url . '">' . esc_html( $target ) . '</a></p></body></html>' . "\n";
+	}
+
+	/**
+	 * Marks a page Pagefind must not index (the 404 page): it would match searches for its own wording.
+	 *
+	 * @param string $html Page.
+	 * @return string
+	 */
+	public static function exclude_from_pagefind( string $html ): string {
+		$processor = new \WP_HTML_Tag_Processor( $html );
+		if ( $processor->next_tag( 'body' ) ) {
+			$processor->set_attribute( 'data-pagefind-ignore', 'all' );
+			return $processor->get_updated_html();
+		}
+		return $html;
 	}
 
 	/**

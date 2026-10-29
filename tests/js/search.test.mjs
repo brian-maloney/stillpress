@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire( import.meta.url );
-const { tokenize, hex, keyFor, Searcher } = require( '../../assets/js/search.js' );
+const { tokenize, hex, keyFor, Searcher, PagefindSearcher } = require( '../../assets/js/search.js' );
 const fixture = JSON.parse( readFileSync( new URL( '../fixtures/search-tokenize.json', import.meta.url ), 'utf8' ) );
 
 test( 'tokenizes the shared examples exactly like PHP', () => {
@@ -103,4 +103,45 @@ test( 'refuses an index format it does not know, and retries after a failure', a
 	} );
 	await assert.rejects( instance.search( 'static', 20 ), /format 99/ );
 	await assert.doesNotReject( instance.search( 'zebra', 20 ) );
+} );
+
+test( 'the Pagefind backend sets the public root once and describes the first results', async () => {
+	const calls = [];
+	const fake = {
+		options: async ( options ) => calls.push( [ 'options', options ] ),
+		search: async ( query ) => {
+			calls.push( [ 'search', query ] );
+			return {
+				results: [ 1, 2, 3 ].map( ( n ) => ( {
+					data: async () => ( { url: '/blog/p' + n + '/', meta: { title: 'P' + n }, excerpt: 'a <mark>fog</mark> b' } ),
+				} ) ),
+			};
+		},
+	};
+	const loaded = [];
+	const searcher = new PagefindSearcher( '/blog/pagefind/', '/blog/', async ( url ) => {
+		loaded.push( url );
+		return fake;
+	} );
+
+	const found = await searcher.search( 'fog', 2 );
+	await searcher.search( 'fog horn', 2 );
+	assert.deepEqual( loaded, [ '/blog/pagefind/pagefind.js' ] );
+	assert.deepEqual( calls, [ [ 'options', { baseUrl: '/blog/' } ], [ 'search', 'fog' ], [ 'search', 'fog horn' ] ] );
+	assert.equal( found.total, 3 );
+	assert.deepEqual( found.results[ 0 ], { path: '/blog/p1/', title: 'P1', excerptHtml: 'a <mark>fog</mark> b' } );
+	assert.equal( found.results.length, 2 );
+} );
+
+test( 'the Pagefind backend tries again after the bundle failed to load', async () => {
+	let attempts = 0;
+	const searcher = new PagefindSearcher( '/pagefind/', '/', async () => {
+		attempts++;
+		if ( 1 === attempts ) {
+			throw new Error( 'missing' );
+		}
+		return { options: async () => {}, search: async () => ( { results: [] } ) };
+	} );
+	await assert.rejects( searcher.search( 'fog', 5 ) );
+	assert.deepEqual( await searcher.search( 'fog', 5 ), { total: 0, results: [] } );
 } );

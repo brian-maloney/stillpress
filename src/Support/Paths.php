@@ -77,6 +77,28 @@ final class Paths {
 	}
 
 	/**
+	 * Deletes a directory tree of our own without following symlinks (a link is removed, not its target).
+	 *
+	 * @param string $path Path.
+	 * @return void
+	 */
+	public static function delete_tree( string $path ): void {
+		if ( is_link( $path ) || is_file( $path ) ) {
+			wp_delete_file( $path );
+			return;
+		}
+		if ( ! is_dir( $path ) ) {
+			return;
+		}
+		foreach ( (array) scandir( $path ) as $entry ) {
+			if ( '.' !== $entry && '..' !== $entry ) {
+				self::delete_tree( $path . '/' . $entry );
+			}
+		}
+		rmdir( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Our own private directory.
+	}
+
+	/**
 	 * Drops index.php and .htaccess deny files into a directory if they are missing.
 	 *
 	 * @param string $dir Directory.
