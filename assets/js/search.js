@@ -331,18 +331,19 @@
 	 *
 	 * @param {Element}     element Element.
 	 * @param {string}      text    Text.
-	 * @param {RegExp|null} pattern Words to mark.
+	 * @param {RegExp|null} pattern Words to mark: (character before)(word).
 	 */
 	function appendMarked( element, text, pattern ) {
 		if ( ! pattern ) {
 			element.textContent = text;
 			return;
 		}
+		// The pattern's first group is the character before a word (kept as text), the second the word itself.
 		let last = 0;
 		for ( const match of text.matchAll( pattern ) ) {
-			element.append( text.slice( last, match.index ) );
+			element.append( text.slice( last, match.index ) + match[ 1 ] );
 			const mark = document.createElement( 'mark' );
-			mark.textContent = match[ 0 ];
+			mark.textContent = match[ 2 ];
 			element.append( mark );
 			last = match.index + match[ 0 ].length;
 		}
@@ -475,8 +476,9 @@
 				.split( /\s+/ )
 				.filter( ( word ) => Array.from( word ).length > 1 )
 				.map( ( word ) => word.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ) );
-			// Mark only where a word starts, as the index matches whole words and their beginnings.
-			const pattern = words.length ? new RegExp( '(?<![\\p{L}\\p{N}])(?:' + words.join( '|' ) + ')', 'giu' ) : null;
+			// Mark only where a word starts, as the index matches whole words and their beginnings. (No lookbehind,
+			// which Safari only has since 16.4.)
+			const pattern = words.length ? new RegExp( '(^|[^\\p{L}\\p{N}])(' + words.join( '|' ) + ')', 'giu' ) : null;
 
 			if ( 0 === found.total ) {
 				status.textContent = format( labels.none, query );
