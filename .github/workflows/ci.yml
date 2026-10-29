@@ -27,10 +27,11 @@ jobs:
           - { php: '7.4', wp: '6.6' }
           - { php: '7.4', wp: 'latest' }
           - { php: '8.1', wp: '6.8' }
-          - { php: '8.3', wp: 'latest', lint: true }
+          # forms: Contact Form 7 6.2 needs WordPress 7.1 and PHP 8.3.
+          - { php: '8.3', wp: 'latest', lint: true, forms: true }
           - { php: '8.3', wp: 'latest', multisite: true }
-          - { php: '8.4', wp: 'latest' }
-          - { php: '8.5', wp: 'latest' }
+          - { php: '8.4', wp: 'latest', forms: true }
+          - { php: '8.5', wp: 'latest', forms: true }
           - { php: '8.5', wp: 'trunk' }
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +61,8 @@ jobs:
           npx wp-env run tests-cli php -r 'exit( @fsockopen( "sftp.test", 22, $n, $s, 5 ) && @fsockopen( "git.test", 443, $n, $s, 5 ) ? 0 : 1 );'
       - run: npm run test:unit
       - run: npm run test:integration
-      - name: Form adapters against Contact Form 7 and WPForms Lite
+      - if: ${{ matrix.forms }}
+        name: Form adapters against Contact Form 7 and WPForms Lite
         run: npm run forms:plugins && npm run test:integration:forms
       - if: ${{ matrix.multisite }}
         run: npm run test:integration:multisite

@@ -25,7 +25,7 @@
     "test:js": "node --test tests/js/search.test.mjs tests/js/forms.test.mjs tests/js/receiver.test.mjs",
     "test:integration:multisite": "wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress vendor/bin/phpunit -c phpunit-integration-multisite.xml.dist",
     "test:integration:forms": "wp-env run tests-cli --env-cwd=wp-content/plugins/stillpress -- env STILLPRESS_FORM_PLUGINS=1 vendor/bin/phpunit -c phpunit-integration.xml.dist --group form-plugins",
-    "forms:plugins": "wp-env run tests-cli wp plugin install contact-form-7 --version=6.2.4 --force && wp-env run tests-cli wp plugin install wpforms-lite --version=2.0.3 --force",
+    "forms:plugins": "wp-env run tests-cli wp plugin install https://downloads.wordpress.org/plugin/contact-form-7.6.2.4.zip https://downloads.wordpress.org/plugin/wpforms-lite.2.0.3.zip --force",
     "check:licenses": "wp-env run cli --env-cwd=wp-content/plugins/stillpress sh -c 'composer licenses --no-dev --format=json | php bin/check-licenses.php'",
     "sftp:start": "bin/sftp-test-server.sh start",
     "sftp:stop": "bin/sftp-test-server.sh stop",

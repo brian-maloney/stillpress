@@ -68,7 +68,7 @@ has); without JavaScript the form posts normally and a short page answers.
 
 | Form | Adapter | Limits | Tested |
 |---|---|---|---|
-| Contact Form 7 | `WPCF7_ContactForm::submit()` | No file uploads; CF7's own captcha integrations aren't used (use the receiver's captcha) | Contact Form 7 6.2.4 (`npm run test:integration:forms`, Playwright) |
+| Contact Form 7 | `WPCF7_ContactForm::submit()` | No file uploads; CF7's own captcha integrations aren't used (use the receiver's captcha) | Contact Form 7 6.2.4 (`npm run test:integration:forms`, Playwright); CI runs it on PHP 8.3+ with the latest WordPress, which that version requires |
 | WPForms (Lite and paid) | `WPForms_Process::process()` | Its render-time and token anti-spam checks are bypassed (the receiver applies its own); no file uploads or payments; page and redirect confirmations send the visitor there | WPForms Lite 2.0.3 (`npm run test:integration:forms`) |
 | Gravity Forms | `GFAPI::submit_form()` | Single-page forms only; no file uploads | Only against a stand-in that follows the documented return value: Gravity Forms isn't on WordPress.org |
 | Comments | `wp_handle_comment_submission()` | Always anonymous; core's moderation, flood and duplicate checks apply; approved comments appear after the next publish | integration, Playwright |

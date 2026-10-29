@@ -98,7 +98,8 @@ final class ReceiverTest extends WP_UnitTestCase {
 		$mail = tests_retrieve_phpmailer_instance()->get_sent();
 		$this->assertSame( 'forms@example.org', $mail->to[0][0] );
 		$this->assertStringContainsString( 'contact form', $mail->subject );
-		$this->assertStringContainsString( "message: Hello\r\nthere", $mail->body );
+		// PHPMailer's line endings differ between versions.
+		$this->assertStringContainsString( "message: Hello\nthere", str_replace( "\r\n", "\n", $mail->body ) );
 		$this->assertStringContainsString( 'name: Ada', $mail->body );
 		$this->assertStringNotContainsString( 'stillpress_', $mail->body );
 		$this->assertStringContainsString( 'Reply-To: ada@example.com', $mail->header );
