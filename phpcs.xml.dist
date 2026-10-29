@@ -6,6 +6,7 @@
 	<file>./uninstall.php</file>
 	<file>./bin/hooks.php</file>
 	<file>./src</file>
+	<file>./receivers</file>
 	<file>./tests</file>
 
 	<exclude-pattern>/vendor/*</exclude-pattern>

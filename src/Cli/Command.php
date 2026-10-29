@@ -753,6 +753,95 @@ final class Command {
 	}
 
 	/**
+	 * Shows how forms on the static site are received, or writes a standalone receiver.
+	 *
+	 * Turn forms on with `wp stillpress settings set forms site` (this site's REST API receives them) or `forms
+	 * receiver` with `forms_endpoint` set to a receiver you run. The shared secret is `wp stillpress secret set forms
+	 * secret`; the captcha secret is `wp stillpress secret set forms captcha_secret`. Changing these settings rebuilds
+	 * the site at the next publish.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<action>]
+	 * : status, or receiver to write a standalone receiver.
+	 * ---
+	 * default: status
+	 * options:
+	 *   - status
+	 *   - receiver
+	 * ---
+	 *
+	 * [<kind>]
+	 * : For receiver: php (any PHP host), cloudflare (a Worker) or netlify (a Netlify Function).
+	 *
+	 * [--out=<file>]
+	 * : Write the receiver to this file instead of standard output.
+	 *
+	 * [--format=<format>]
+	 * : Output format for status.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     $ wp stillpress forms
+	 *     $ wp stillpress forms receiver php --out=stillpress-form.php
+	 *     $ wp stillpress forms receiver cloudflare > worker.mjs
+	 *
+	 * @param string[]             $args  Positional arguments.
+	 * @param array<string,string> $assoc Options.
+	 * @return void
+	 */
+	public function forms( $args, $assoc ): void {
+		$config = new \Stillpress\Forms\Config();
+		if ( 'receiver' === ( $args[0] ?? 'status' ) ) {
+			try {
+				$code = \Stillpress\Forms\ReceiverExport::build( (string) ( $args[1] ?? 'php' ), $config );
+			} catch ( \InvalidArgumentException $e ) {
+				WP_CLI::error( $e->getMessage() );
+			}
+			if ( empty( $assoc['out'] ) ) {
+				WP_CLI::line( rtrim( $code, "\n" ) );
+				return;
+			}
+			if ( false === file_put_contents( (string) $assoc['out'], $code ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- A file the operator named.
+				WP_CLI::error( 'Could not write ' . $assoc['out'] );
+			}
+			WP_CLI::success( sprintf( 'Wrote %s. Set STILLPRESS_FORMS_SECRET where it runs to the same value as here; it never goes into the file.', $assoc['out'] ) );
+			return;
+		}
+		$source = static function ( string $field ): string {
+			$where = \Stillpress\Security\Secrets::source( \Stillpress\Forms\Config::SECRETS, $field );
+			return '' === $where ? 'not set' : $where;
+		};
+		$rows   = array(
+			array( 'mode', $config->mode() ),
+			array( 'forms post to', '' === $config->endpoint() ? '(nowhere: forms are published unchanged)' : $config->endpoint() ),
+			array( 'relay address', $config->relay_url() ),
+			array( 'pages allowed to post', $config->allowed_origin() ),
+			array( 'marked forms email', $config->email() ),
+			array( 'webhook', '' === $config->webhook() ? '(none)' : $config->webhook() ),
+			array( 'captcha', $config->captcha() ),
+			array( 'secret', $source( 'secret' ) ),
+			array( 'captcha secret', $source( 'captcha_secret' ) ),
+		);
+		WP_CLI\Utils\format_items(
+			$assoc['format'] ?? 'table',
+			array_map(
+				static function ( $row ) {
+					return array(
+						'setting' => $row[0],
+						'value'   => $row[1],
+					);
+				},
+				$rows
+			),
+			array( 'setting', 'value' )
+		);
+	}
+
+	/**
 	 * Checks that this site can be published (the same checks as Site Health).
 	 *
 	 * @return void
