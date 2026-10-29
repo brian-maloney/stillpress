@@ -1,0 +1,29 @@
+{
+	"_comment": "Shared by Forms\\Protocol and Forms\\Signature (PHP), receivers/stillpress-form.php and receivers/receiver-core.js. A case's \"extra\" appends count pairs named f0, f1, ... whose values are value_length letters a. \"expect\" is the refusal reason, or null when the submission passes.",
+	"refusals": [
+		{ "name": "plain submission", "fields": [ [ "stillpress_form", "cf7:12" ], [ "stillpress_hp", "" ], [ "stillpress_t", "8.2" ], [ "your-name", "Ada" ] ], "expect": null },
+		{ "name": "no JavaScript: empty time", "fields": [ [ "stillpress_form", "form:contact" ], [ "stillpress_hp", "" ], [ "stillpress_t", "" ], [ "message", "hello" ] ], "expect": null },
+		{ "name": "no time field at all", "fields": [ [ "stillpress_form", "comments" ], [ "comment", "nice" ] ], "expect": null },
+		{ "name": "exactly the minimum time", "fields": [ [ "stillpress_form", "comments" ], [ "stillpress_t", "3" ] ], "expect": null },
+		{ "name": "honeypot filled", "fields": [ [ "stillpress_form", "cf7:12" ], [ "stillpress_hp", "http://spam.example" ], [ "stillpress_t", "20" ] ], "expect": "honeypot" },
+		{ "name": "honeypot of one space", "fields": [ [ "stillpress_form", "cf7:12" ], [ "stillpress_hp", " " ] ], "expect": "honeypot" },
+		{ "name": "too fast", "fields": [ [ "stillpress_form", "cf7:12" ], [ "stillpress_t", "1.4" ] ], "expect": "too_fast" },
+		{ "name": "time is not a number", "fields": [ [ "stillpress_form", "cf7:12" ], [ "stillpress_t", "soon" ] ], "expect": "too_fast" },
+		{ "name": "negative time", "fields": [ [ "stillpress_form", "cf7:12" ], [ "stillpress_t", "-50" ] ], "expect": "too_fast" },
+		{ "name": "missing form key", "fields": [ [ "message", "hello" ] ], "expect": "bad_form" },
+		{ "name": "form key with a path", "fields": [ [ "stillpress_form", "cf7:../12" ] ], "expect": "bad_form" },
+		{ "name": "form key in upper case kind", "fields": [ [ "stillpress_form", "CF7:12" ] ], "expect": "bad_form" },
+		{ "name": "first form key counts", "fields": [ [ "stillpress_form", "form:a" ], [ "stillpress_form", "bad key!" ] ], "expect": null },
+		{ "name": "a hundred fields", "fields": [], "extra": { "count": 99, "value_length": 1 }, "prefix": [ [ "stillpress_form", "form:big" ] ], "expect": null },
+		{ "name": "a hundred and one fields", "fields": [], "extra": { "count": 100, "value_length": 1 }, "prefix": [ [ "stillpress_form", "form:big" ] ], "expect": "too_many" },
+		{ "name": "one value too long", "fields": [], "extra": { "count": 1, "value_length": 20001 }, "prefix": [ [ "stillpress_form", "form:big" ] ], "expect": "too_large" },
+		{ "name": "longest value allowed", "fields": [], "extra": { "count": 1, "value_length": 20000 }, "prefix": [ [ "stillpress_form", "form:big" ] ], "expect": null },
+		{ "name": "too much in total", "fields": [], "extra": { "count": 6, "value_length": 18000 }, "prefix": [ [ "stillpress_form", "form:big" ] ], "expect": "too_large" },
+		{ "name": "size checks come before the honeypot", "fields": [ [ "stillpress_hp", "x" ] ], "extra": { "count": 101, "value_length": 1 }, "prefix": [ [ "stillpress_form", "form:big" ] ], "expect": "too_many" }
+	],
+	"signatures": [
+		{ "secret": "s3cret", "time": 1700000000, "body": "{\"v\":1}", "header": "t=1700000000,v1=bf81b0df9ab63212348caadf6ab8b1fc3d2c0c0cb838b2f767a6c1f11d1fa717" },
+		{ "secret": "another secret", "time": 1800000123, "body": "", "header": "t=1800000123,v1=a5bf7e3ac643d6e351e49da050cf6be116b36bfb6d99eba55aff69a65dd1726a" },
+		{ "secret": "ü-key", "time": 1750000000, "body": "{\"form\":\"cf7:12\",\"fields\":[[\"a\",\"ä\"]]}", "header": "t=1750000000,v1=65fe6c0e1696f45ecc3e4513f4268e3be0c7e6d8bdce08f60de6505c484549fb" }
+	]
+}

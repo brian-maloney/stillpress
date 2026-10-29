@@ -11,6 +11,7 @@ and how each threat is handled. Every mitigation listed here should have a test;
 | Unpublished content (drafts, private, password-protected, scheduled posts) | Leaking it to a public static site is a privacy breach that can't be undone once deployed. |
 | The server filesystem | The plugin writes and deletes files. A bad path could overwrite WordPress or leak `wp-config.php`. |
 | Deploy credentials (M2+) | Keys to S3, SFTP, Git or hosting APIs give an attacker the public site. |
+| Form submissions (names, addresses, messages) | Personal data sent by visitors of the static site; also a channel for spam and abuse of the site's mail. |
 | Origin availability | A crawler that runs away can take down the WordPress origin. |
 | Admin sessions and capabilities | Publishing and settings must be limited to the right users. |
 
@@ -22,8 +23,11 @@ and how each threat is handled. Every mitigation listed here should have a test;
 3. **Crawled HTML/CSS/XML → crawler.** Rendered output is *untrusted data*. Any plugin, theme or comment author can put
    arbitrary links, paths and markup in it.
 4. **WordPress → filesystem** (build cache, local directory target, ZIP files, asset copying).
-5. **WordPress → remote deploy targets** (S3, CloudFront, SFTP, Git over HTTPS, the Netlify API and the Cloudflare API). Requests carry credentials; answers are untrusted.
-6. **WP-CLI operator → WordPress.** Trusted at the level of the shell user.
+5. **Visitors of the static site → form receivers** (WordPress's `forms/submit` route or a standalone receiver).
+   Anyone can post anything; submissions are untrusted.
+6. **Standalone receiver → WordPress relay** (`forms/relay`), authenticated by a shared secret.
+7. **WordPress → remote deploy targets** (S3, CloudFront, SFTP, Git over HTTPS, the Netlify API and the Cloudflare API). Requests carry credentials; answers are untrusted.
+8. **WP-CLI operator → WordPress.** Trusted at the level of the shell user.
 
 ## Threats and mitigations (STRIDE)
 
@@ -49,6 +53,11 @@ and how each threat is handled. Every mitigation listed here should have a test;
 | T18 | Spoofing / Info disclosure | **SSH man-in-the-middle**: an attacker on the network path, or DNS, answers for the SFTP host and collects the password or receives the site. | The server's host key fingerprint is required and checked with `hash_equals` before any credential is sent; no trust on first use. A mismatch stops the deploy with a message that says why it matters. Private keys are preferred over passwords. | `SftpTest` |
 | T19 | Elevation of privilege | **Running a program of the attacker's choice**: the Pagefind search mode runs an executable, so whoever names it gets code execution as the web server, even on sites that forbid file edits (`DISALLOW_FILE_MODS`). | The path comes only from `STILLPRESS_PAGEFIND_BINARY` in wp-config.php, never from settings, REST or the CLI. It must be absolute and an executable file. It runs through `proc_open()` with an argument list (no shell, so paths can't inject commands), an environment of only `PATH` and `HOME` (inherited variables can hold deploy credentials), and a time limit. Its output is copied into the build through `PathMapper`, skipping links. | `PagefindTest`, `PagefindWriterTest` |
 | T20 | Info disclosure | **Search index exposing unpublished text.** | The index is built from published HTML only (the same anonymous render), never from posts, so drafts, private and password-protected posts never reach it; a page leaves the index when it leaves the site. | `SearchIndexTest` (system), `IndexTest` |
+| T21 | Spoofing / DoS | **Form spam and mail floods** through the public receiver. | Honeypot, minimum time on the page, size limits (`Protocol`), per-IP rate limit, `Origin` must be the public site when the browser sends one, optional Turnstile or hCaptcha; plugins' own validation and spam filters still run. Refusals don't say which check failed. | `ProtocolTest`, `ReceiverTest`, `forms.test.mjs` |
+| T22 | Spoofing | **Forged relay requests**: posting to `forms/relay` to skip the receiver's checks. | HMAC-SHA256 over time and body with the forms secret, compared with `hash_equals`; five-minute window; each signature accepted once; the relay refuses everything while no secret is set, and re-applies the spam rules and rate limit. | `ReceiverTest`, `EndpointTest` |
+| T23 | Elevation of privilege / Tampering | **Submissions acting as a logged-in user or a chosen recipient**: a visitor's request carries an admin's cookies (same-site), or fields choose where mail goes. | Adapters run with no current user (`Adapter\Request`) and restore it afterwards; recipients come only from the plugin's form settings or `forms_email`, never from fields; the Reply-To header takes only a valid address (`is_email`), so no header injection. | `ReceiverTest`, `FormPluginsTest` |
+| T24 | Tampering | **Script injection through answers**: a receiver or plugin message with HTML, or a `javascript:` redirect. | Messages are reduced to text in `Result` and shown with `textContent`; redirects must be http(s) in `Result::from_array()` and in the client; the no-JavaScript page escapes everything and links back only to the public site. | `ReceiverTest`, `EndpointTest`, `forms.test.mjs` |
+| T25 | Info disclosure / SSRF | **Webhook and captcha requests**: an admin-set webhook pointed at an internal service; personal data sent to outside services. | The webhook goes through `wp_safe_remote_post()` (no private addresses, no redirects), must be https, and on multisite only a super admin may set it; it is signed. Captcha verification is off until the owner picks a provider; then only the answer and the visitor's IP go to that provider. Stillpress stores no submissions; rate-limit counters hold a salted hash of the IP for ten minutes. | `ReceiverTest`, `SettingsTest` |
 
 ## Residual risks
 
@@ -58,5 +67,7 @@ and how each threat is handled. Every mitigation listed here should have a test;
   carry the site's own files and the credentials that user entered.
 - Anyone who can reach the site can send requests with a forged render header. They gain nothing but a cheaper
   rejection path; the token check runs before any recording.
+- In `site` mode the REST route is public by design. The rate limit is per IP address, so a bot network with many
+  addresses gets more attempts; the captcha is the stronger option there.
 - Content rendered by third-party plugins may embed private data in public pages. We can't detect that in general;
   the static site shows whatever an anonymous visitor would see.

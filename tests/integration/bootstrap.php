@@ -27,6 +27,15 @@ tests_add_filter(
 	'muplugins_loaded',
 	static function () {
 		require dirname( __DIR__, 2 ) . '/stillpress.php';
+		// The form-plugins group (npm run test:integration:forms) runs against Contact Form 7 and WPForms Lite,
+		// installed with npm run forms:plugins. They load only for that run, so the rest of the suite stays plain.
+		if ( getenv( 'STILLPRESS_FORM_PLUGINS' ) ) {
+			foreach ( array( 'contact-form-7/wp-contact-form-7.php', 'wpforms-lite/wpforms.php' ) as $stillpress_plugin ) {
+				if ( file_exists( WP_PLUGIN_DIR . '/' . $stillpress_plugin ) ) {
+					require WP_PLUGIN_DIR . '/' . $stillpress_plugin;
+				}
+			}
+		}
 	}
 );
 

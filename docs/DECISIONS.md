@@ -300,3 +300,41 @@ sets Pagefind's `baseUrl` to the public site's path, for sites published under a
 
 The run isn't sliced: Pagefind processes the whole site at once, and the build log records how long it took. A site
 whose run outgrows the slice budget would need its builds to run from the CLI. Revisit if that happens.
+
+
+## D22. Forms post to a receiver; WordPress processes them through the form plugin's own code
+
+A static host can't run PHP, so a form on the static copy has to post somewhere else. Three choices were weighed:
+replace every form plugin with our own form builder (people would rebuild their forms, and lose the plugins'
+notifications, entries and add-ons), send submissions to a third-party form service (an outside service by default,
+against the "no external calls" rule), or keep the plugins and send each submission back to WordPress. We do the
+last: an adapter per plugin recognizes its forms in the rendered page and, when a submission arrives, calls the
+plugin's own submission code, so its validation, mail templates, stored entries and add-ons keep working.
+
+- **Where submissions arrive.** WordPress itself when it is publicly reachable (`site` mode, the simplest), or a small
+  receiver somewhere else (`receiver` mode) for sites whose WordPress is private: a single PHP file for any PHP host, or
+  a function for Cloudflare Workers or Netlify. That receiver applies the same spam rules and forwards each accepted
+  submission to WordPress's relay route, signed with a secret both sides know; WordPress then needs to be reachable only
+  from the receiver. A receiver can also send to any webhook, or (the PHP file) email, without WordPress.
+- **Rewriting after URL rewriting.** The receiver may live on the origin (`site` mode); the URL rewriter would turn its
+  address into the public site's, which can't answer. So forms are rewritten after it.
+- **No signed form tokens.** Nonce-like tokens on the page prove nothing on a static site: every visitor, bot or not,
+  gets the same page, so a token is as available to a bot as to a person, and it would go stale between builds. The
+  checks are what a static page allows: a honeypot field (catches bots that fill every field), the time the page was
+  open, measured in the browser (`performance.now()`, so clock differences don't matter; missing without JavaScript,
+  then skipped), a per-IP rate limit, an `Origin` check, size limits, and an optional captcha. Turnstile and hCaptcha
+  are outside services, so they are off unless the owner picks one.
+- **Plugins' own anti-spam.** WPForms checks a signed render time and a token its script computes, and that the
+  submission came through its AJAX action; on a page rendered hours earlier and posted through a receiver these can't
+  pass. The adapter bypasses exactly those checks through the filters WPForms offers for it, for that one call. Contact
+  Form 7 checks nonces only for logged-in users and leaves the rest to add-ons, which still run. The same reasoning
+  removes WPForms' per-render tokens from the published markup, which would otherwise change the page on every build.
+- **One format, three implementations.** The rules, the relay payload and the signature are small enough to write in
+  PHP inside the plugin, in the standalone PHP file (which can't load the plugin) and in JavaScript, and are tested
+  against one shared table, as the search tokenizer is (D20).
+- **Messages are text.** Plugins' confirmation messages may contain HTML. The answer crosses a receiver the site owner
+  may not fully control, and the client inserts it into the page, so markup is removed and the client uses
+  `textContent`.
+
+Not supported: file uploads, multi-page Gravity Forms, and plugins' own captcha widgets (use the receiver's captcha
+instead). Revisit if people need uploads; they would need storage on the receiver.

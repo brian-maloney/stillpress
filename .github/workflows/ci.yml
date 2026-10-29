@@ -51,7 +51,7 @@ jobs:
         name: Runtime dependency licences are GPL-compatible
         run: npm run check:licenses
       - if: ${{ matrix.lint }}
-        name: Search client (Node)
+        name: Search and forms clients (Node)
         run: npm run test:js
       - name: Start the test SFTP and Git servers
         run: npm run sftp:start && npm run git:start
@@ -60,6 +60,8 @@ jobs:
           npx wp-env run tests-cli php -r 'exit( @fsockopen( "sftp.test", 22, $n, $s, 5 ) && @fsockopen( "git.test", 443, $n, $s, 5 ) ? 0 : 1 );'
       - run: npm run test:unit
       - run: npm run test:integration
+      - name: Form adapters against Contact Form 7 and WPForms Lite
+        run: npm run forms:plugins && npm run test:integration:forms
       - if: ${{ matrix.multisite }}
         run: npm run test:integration:multisite
 

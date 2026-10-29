@@ -226,6 +226,41 @@ Built in by default (D20); Pagefind is an optional backend where a binary is sup
   hidden and screen-reader-only elements, and `data-stillpress-search-ignore` are skipped. The
   `stillpress_search_document` filter can change or drop (null) what a page contributes.
 
+## Forms (static)
+Forms on the static copy post to a **receiver** (D22). The `forms` setting chooses where: `off` (default: forms are
+published as they are and don't work), `site` (this WordPress site's REST API receives them, so it must be reachable
+from the internet at its own address) or `receiver` (a receiver run elsewhere, at `forms_endpoint`).
+- **Adapters** (`Forms\Adapter\*`) recognize a kind of form in rendered HTML and process its submissions in WordPress:
+  Contact Form 7 (`cf7:<id>`, through `WPCF7_ContactForm::submit()`), WPForms (`wpforms:<id>`, through
+  `WPForms_Process::process()`), Gravity Forms (`gravityforms:<id>`, through `GFAPI::submit_form()`), the comment form
+  (`comments`, through `wp_handle_comment_submission()`) and any form marked `data-stillpress-form="<name>"`
+  (`form:<name>`, emailed to `forms_email`). `stillpress_form_adapters` adds more. Each runs the plugin with `$_POST`,
+  the visitor's IP address and User-Agent set from the submission and no logged-in user (`Adapter\Request`).
+- **Rewriting** (`Forms\FormMarkup`) runs in the processor right after URL rewriting, so a receiver on the origin keeps
+  its address. A recognized form gets the receiver as `action`, `method="post"`, `data-stillpress-form`, and four fields
+  inserted after its start tag: `stillpress_form` (key), `stillpress_page` (public page address), an empty
+  `stillpress_t` and the `stillpress_hp` honeypot. Per-render tokens that adapters declare (WPForms' render-time tokens)
+  are removed, so the markup is identical from build to build.
+- **Client** (`assets/js/forms.js`, enqueued only on render requests while forms are on): captures `submit` on the
+  document before form plugins' own handlers, fills in `stillpress_t` (seconds the page was open), sends `FormData`
+  with `fetch()` asking for JSON, and shows the answer as text in the form, with a note beside each rejected field.
+  With a captcha set up it loads the provider's script on pages that have forms. Without JavaScript the form posts
+  normally and the receiver answers with a short HTML page (or a 303 to a plugin's confirmation page).
+- **Shared rules** (`Forms\Protocol`): at most 100 fields, 200-byte names, 20,000-byte values, 100,000 bytes in all; a
+  valid form key; an empty honeypot; and, when present, `stillpress_t` of at least 3 seconds. The standalone receivers
+  repeat these rules, and all implementations are tested against `tests/fixtures/forms-cases.json`.
+- **WordPress receiver** (`Forms\Receiver`, routes in `Forms\Endpoint`): `POST stillpress/v1/forms/submit` (site mode)
+  checks the `Origin` header against the public site, the shared rules, the captcha (Turnstile or hCaptcha, opt-in)
+  and a rate limit (5 per 10 minutes per IP, `stillpress_form_rate_limit`), then calls the adapter. `POST
+  stillpress/v1/forms/relay` accepts a submission another receiver forwarded: JSON `{v, form, page, fields: [[name,
+  value], …], ip, user_agent}` signed with the forms secret (`X-Stillpress-Signature: t=<time>,v1=<HMAC-SHA256 of
+  "<time>.<body>">`, five minutes either way, each signature accepted once). Accepted submissions fire
+  `stillpress_form_submitted` and, when `forms_webhook` and the secret are set, are sent on in the same signed format.
+  Answers are `{ok, status: sent|invalid|spam|limited|error, message, errors, redirect}`; messages are plain text.
+- **Standalone receivers** (`receivers/`, written by `wp stillpress forms receiver`): a single PHP file for any PHP
+  host and a module for Cloudflare Workers or Netlify Functions. They apply the shared rules, an optional captcha and
+  rate limit, and forward to the relay or any webhook (the PHP one can also email with `mail()`).
+
 ## Secrets
 `Security\Secrets` resolves `(deployer, field)` in this order: `STILLPRESS_<DEPLOYER>_<FIELD>` constant → environment variable of
 the same name → the `stillpress_secrets` option (autoload off), sealed by `Security\SecretBox` with sodium `secretbox`. Each slot's
@@ -255,7 +290,8 @@ from every log line. `wp stillpress secret list|set|delete` manages stored value
 - Activation defaults: target = Local directory at `wp-content/stillpress/public/<site>/`, public URL = current home URL. The one
   onboarding choice: *where to deploy*.
 - WP-CLI: `wp stillpress build [--full] [--url=…] [--sync] [--no-deploy]`, `status`, `cancel`, `deploy [--target]`, `zip [--out]`,
-  `urls list|add|remove`, `why <url>` (shows recorded deps), `changes list|flush`, `settings get|set|list`, `secret list|set|delete`, `doctor` (Site Health checks), `clean`.
+  `urls list|add|remove`, `why <url>` (shows recorded deps), `changes list|flush`, `settings get|set|list`, `secret list|set|delete`,
+  `forms status|receiver`, `doctor` (Site Health checks), `clean`.
 - Extension API: every pipeline stage has actions/filters (`stillpress_seed_urls`, `stillpress_pre_render`, `stillpress_rendered_response`,
   `stillpress_rewrite_rules`, `stillpress_output_path`, `stillpress_changeset`, `stillpress_register_deployers`,
   `stillpress_build_completed`, …). They're documented in `docs/HOOKS.md`, and a test fails if any `do_action`/`apply_filters` lacks a docblock.

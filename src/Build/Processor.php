@@ -11,6 +11,7 @@ use Stillpress\Crawl\AssetCopier;
 use Stillpress\Crawl\LinkExtractor;
 use Stillpress\Crawl\Seeds;
 use Stillpress\Crawl\UrlClassifier;
+use Stillpress\Forms\FormMarkup;
 use Stillpress\Output\Cache;
 use Stillpress\Output\UnsafePathException;
 use Stillpress\Render\RenderResult;
@@ -98,6 +99,13 @@ final class Processor {
 	private $search;
 
 	/**
+	 * Form rewriter, or null when forms are off.
+	 *
+	 * @var FormMarkup|null
+	 */
+	private $forms;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param OriginSet     $origins    Origin addresses.
@@ -109,8 +117,9 @@ final class Processor {
 	 * @param Logger        $logger     Logger.
 	 * @param int           $build_id   Build ID.
 	 * @param PageIndexer   $search     Search indexer, or null when search is off.
+	 * @param FormMarkup    $forms      Form rewriter, or null when forms are off.
 	 */
-	public function __construct( OriginSet $origins, UrlRewriter $rewriter, LinkExtractor $extractor, UrlClassifier $classifier, Cache $cache, UrlRepository $urls, Logger $logger, int $build_id, ?PageIndexer $search = null ) {
+	public function __construct( OriginSet $origins, UrlRewriter $rewriter, LinkExtractor $extractor, UrlClassifier $classifier, Cache $cache, UrlRepository $urls, Logger $logger, int $build_id, ?PageIndexer $search = null, ?FormMarkup $forms = null ) {
 		$this->origins    = $origins;
 		$this->rewriter   = $rewriter;
 		$this->extractor  = $extractor;
@@ -120,6 +129,7 @@ final class Processor {
 		$this->logger     = $logger;
 		$this->build_id   = $build_id;
 		$this->search     = $search;
+		$this->forms      = $forms;
 	}
 
 	/**
@@ -241,6 +251,10 @@ final class Processor {
 				}
 			}
 			$body = $this->rewriter->rewrite( $body );
+			if ( null !== $this->forms && 'text/html' === $mime && 'asset' !== $kind ) {
+				// After rewriting, so a receiver on the origin keeps its address (D22).
+				$body = $this->forms->transform( $body, $this->rewriter->rewrite_url( (string) $row['url'] ) )['html'];
+			}
 
 			/**
 			 * Filters a document after URL rewriting and before it is hashed and written.

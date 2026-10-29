@@ -49,6 +49,15 @@ Fires after content changes were recorded for the next incremental build.
 
 Since 0.1.0. Fired in `src/Deps/ChangeListener.php`.
 
+### `stillpress_form_submitted`
+
+Fires after a form submission from the static site was accepted.
+
+- `\Stillpress\Forms\Submission $submission` The submission: form key, fields, page, visitor.
+- `\Stillpress\Forms\Result $result` What the visitor is told.
+
+Since 0.4.0. Fired in `src/Forms/Receiver.php`.
+
 ### `stillpress_register_deployers`
 
 Fires once so extensions can register deployers.
@@ -127,6 +136,42 @@ Runs inside the render request, so conditional tags such as is_singular() work.
 - `string $reason` Default "password-protected" for posts behind a password, otherwise "".
 
 Since 0.1.0. Fired in `src/Render/Recorder.php`.
+
+### `stillpress_form_adapters`
+
+Filters the form adapters. An adapter recognizes a kind of form in published pages and processes its
+submissions; see `src/Forms/Adapter/AdapterInterface.php`. The first adapter that recognizes a form wins.
+
+- `\Stillpress\Forms\Adapter\AdapterInterface[] $adapters` Adapters for Contact Form 7, WPForms, Gravity
+
+Since 0.4.0. Fired in `src/Forms/Adapters.php`.
+
+### `stillpress_form_client_ip`
+
+Filters the IP address of a visitor who sends a form, used for the rate limit, the captcha check and the
+form plugins. By default it is REMOTE_ADDR; behind a proxy or CDN, return the address the proxy reports,
+but only for requests that really came through it (forwarding headers are easy to forge).
+
+- `string $ip` REMOTE_ADDR.
+
+Since 0.4.0. Fired in `src/Forms/Endpoint.php`.
+
+### `stillpress_form_rate_limit`
+
+Filters how many form submissions one IP address may send, and in how many seconds.
+
+- `array{0:int,1:int} $limit` Submissions and window; 5 in 600 seconds by default. Zero submissions turns
+- `string $ip` Visitor IP address.
+
+Since 0.4.0. Fired in `src/Forms/Receiver.php`.
+
+### `stillpress_form_settings`
+
+Filters the settings of the forms client: captcha provider and site key, and labels.
+
+- `array<string,mixed> $settings` Settings printed for assets/js/forms.js.
+
+Since 0.4.0. Fired in `src/Forms/Frontend.php`.
 
 ### `stillpress_global_options`
 

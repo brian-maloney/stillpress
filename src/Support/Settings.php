@@ -65,6 +65,17 @@ final class Settings {
 			// builtin: an index built in PHP and searched by the bundled script; pagefind: run the binary named by
 			// STILLPRESS_PAGEFIND_BINARY; pagefind_host: the host's build step runs Pagefind; off.
 			'search'                          => 'builtin',
+			// Where published forms send submissions (Forms\Config): off, site (this site's REST API) or
+			// receiver (forms_endpoint, a receiver run elsewhere).
+			'forms'                           => 'off',
+			'forms_endpoint'                  => '',
+			// Who gets submissions of forms marked data-stillpress-form; empty means the admin email.
+			'forms_email'                     => '',
+			// Gets a signed copy of every accepted submission.
+			'forms_webhook'                   => '',
+			// none, turnstile or hcaptcha. Outside services, so off unless chosen.
+			'forms_captcha'                   => 'none',
+			'forms_captcha_site_key'          => '',
 			// Per-deployer fields, see Deploy\TargetConfig.
 			'targets'                         => array(),
 		);
@@ -192,6 +203,19 @@ final class Settings {
 		$search        = isset( $input['search'] ) ? (string) $input['search'] : $defaults['search'];
 		$out['search'] = in_array( $search, array( 'off', 'builtin', 'pagefind', 'pagefind_host' ), true ) ? $search : $defaults['search'];
 
+		$forms        = isset( $input['forms'] ) ? (string) $input['forms'] : $defaults['forms'];
+		$out['forms'] = in_array( $forms, array( 'off', 'site', 'receiver' ), true ) ? $forms : $defaults['forms'];
+
+		$out['forms_endpoint'] = self::sanitize_https_url( $input['forms_endpoint'] ?? '', true );
+		$out['forms_webhook']  = self::sanitize_https_url( $input['forms_webhook'] ?? '', false );
+		$email                 = isset( $input['forms_email'] ) ? sanitize_email( (string) $input['forms_email'] ) : '';
+		$out['forms_email']    = '' !== $email && is_email( $email ) ? $email : '';
+
+		$captcha                       = isset( $input['forms_captcha'] ) ? (string) $input['forms_captcha'] : $defaults['forms_captcha'];
+		$out['forms_captcha']          = in_array( $captcha, array( 'none', 'turnstile', 'hcaptcha' ), true ) ? $captcha : $defaults['forms_captcha'];
+		$site_key                      = isset( $input['forms_captcha_site_key'] ) ? trim( (string) $input['forms_captcha_site_key'] ) : '';
+		$out['forms_captcha_site_key'] = preg_match( '/^[A-Za-z0-9_\-]{1,100}$/', $site_key ) ? $site_key : '';
+
 		$out['targets'] = \Stillpress\Deploy\TargetConfig::sanitize( $input['targets'] ?? array() );
 
 		return $out;
@@ -282,6 +306,31 @@ final class Settings {
 				}
 			)
 		);
+	}
+
+	/**
+	 * An https address, or an empty string. Plain http is accepted only for this computer (localhost, 127.0.0.1,
+	 * ::1 and *.localhost), for development.
+	 *
+	 * @param mixed $value      Raw value.
+	 * @param bool  $allow_http Accept http for local addresses.
+	 * @return string
+	 */
+	private static function sanitize_https_url( $value, bool $allow_http ): string {
+		$url = is_scalar( $value ) ? trim( (string) $value ) : '';
+		if ( '' === $url || strlen( $url ) > 2048 || preg_match( '/[\s\x00-\x1F\x7F]/', $url ) ) {
+			return '';
+		}
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['fragment'] ) ) {
+			return '';
+		}
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$local  = in_array( strtolower( $parts['host'] ), array( 'localhost', '127.0.0.1', '[::1]' ), true ) || '.localhost' === substr( strtolower( $parts['host'] ), -10 );
+		if ( 'https' !== $scheme && ! ( 'http' === $scheme && $allow_http && $local ) ) {
+			return '';
+		}
+		return esc_url_raw( $url, array( 'http', 'https' ) );
 	}
 
 	/**

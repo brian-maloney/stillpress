@@ -65,6 +65,7 @@ final class Plugin {
 		// First, so a render request is recognized before any other plugin code reads content.
 		Recorder::maybe_start();
 		Search\Frontend::register();
+		Forms\Frontend::register();
 
 		Capabilities::register();
 		Queue::register();
@@ -72,6 +73,7 @@ final class Plugin {
 		$this->changes->register();
 
 		Rest\Controller::register();
+		Forms\Endpoint::register();
 		Admin\AdminBar::register();
 		if ( is_admin() ) {
 			Admin\Admin::register();

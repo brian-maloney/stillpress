@@ -287,7 +287,9 @@ final class Runner {
 		}
 		$rows      = $this->urls->get_many( array_keys( $claimed ) );
 		$search    = 'builtin' === $pipeline->settings['search'] ? new PageIndexer( new TextExtractor(), new Tokenizer(), new Index() ) : null;
-		$processor = new Processor( $pipeline->origins, $pipeline->rewriter, $pipeline->extractor, $pipeline->classifier, $pipeline->cache, $this->urls, $logger, $build_id, $search );
+		$forms     = new \Stillpress\Forms\Config( $pipeline->settings );
+		$markup    = $forms->enabled() ? new \Stillpress\Forms\FormMarkup( \Stillpress\Forms\Adapters::defaults( $forms ), $forms->endpoint() ) : null;
+		$processor = new Processor( $pipeline->origins, $pipeline->rewriter, $pipeline->extractor, $pipeline->classifier, $pipeline->cache, $this->urls, $logger, $build_id, $search, $markup );
 		$token     = RenderToken::for_site();
 		$requests  = array();
 		$results   = array();
