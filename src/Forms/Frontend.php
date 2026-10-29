@@ -21,23 +21,28 @@ final class Frontend {
 	const HANDLE = 'stillpress-forms';
 
 	/**
-	 * Hooks in when this request is a render and forms are on.
+	 * Hooks in when this request is a render.
 	 *
 	 * @return void
 	 */
 	public static function register(): void {
-		if ( null === Recorder::active() || ! ( new Config() )->enabled() ) {
+		if ( null === Recorder::active() ) {
 			return;
 		}
 		add_action( 'wp_enqueue_scripts', array( self::class, 'enqueue' ) );
 	}
 
 	/**
-	 * Enqueues the client with its settings.
+	 * Enqueues the client with its settings when forms are on. Checked here, not at boot: the receiver's address
+	 * comes from rest_url(), which needs the rewrite rules WordPress sets up later.
 	 *
 	 * @return void
 	 */
 	public static function enqueue(): void {
+		$config = new Config();
+		if ( ! $config->enabled() ) {
+			return;
+		}
 		wp_enqueue_script(
 			self::HANDLE,
 			Assets::url( 'assets/js/forms.js' ),
@@ -48,7 +53,7 @@ final class Frontend {
 				'in_footer' => true,
 			)
 		);
-		wp_add_inline_script( self::HANDLE, 'window.stillpressFormSettings = ' . wp_json_encode( self::settings( new Config() ) ) . ';', 'before' );
+		wp_add_inline_script( self::HANDLE, 'window.stillpressFormSettings = ' . wp_json_encode( self::settings( $config ) ) . ';', 'before' );
 	}
 
 	/**

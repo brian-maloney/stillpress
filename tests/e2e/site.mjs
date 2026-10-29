@@ -56,10 +56,12 @@ export const PAGES = [ '/', '/fixture-story-1/', '/fixture-story-2/', '/about/',
  * @param {Object} [options]
  * @param {string} [options.search] Search mode. With "pagefind_host", Pagefind runs over the unpacked site here, as a
  *                                  host's build step would.
+ * @param {string} [options.forms]  Forms mode. With "site", Contact Form 7 is installed and a page with its form
+ *                                  added (tests/e2e/fixtures/forms.php).
  */
-export function prepare( name, { search = 'builtin' } = {} ) {
+export function prepare( name, { search = 'builtin', forms = 'off' } = {} ) {
 	const setup = THEMES[ name ];
-	wp( [ 'plugin', 'deactivate', 'elementor' ], { ignore: true } );
+	wp( [ 'plugin', 'deactivate', 'elementor', 'contact-form-7' ], { ignore: true } );
 	wp( [ 'plugin', 'activate', 'stillpress' ] );
 	if ( ! wp( [ 'theme', 'is-installed', setup.theme ], { ignore: true } ) && setup.theme !== 'twentytwentyfive' ) {
 		wp( [ 'theme', 'install', setup.theme ], { ignore: true } );
@@ -74,11 +76,21 @@ export function prepare( name, { search = 'builtin' } = {} ) {
 		wp( [ 'plugin', 'activate', plugin ] );
 	}
 	wp( [ 'eval-file', 'tests/e2e/fixtures/content.php', name ] );
+	if ( 'off' !== forms ) {
+		if ( ! wp( [ 'plugin', 'is-installed', 'contact-form-7' ], { ignore: true } ) ) {
+			wp( [ 'plugin', 'install', 'contact-form-7', '--version=6.2.4' ] );
+		}
+		wp( [ 'plugin', 'activate', 'contact-form-7' ] );
+		wp( [ 'eval-file', 'tests/e2e/fixtures/forms.php' ] );
+		// Rate-limit counters from earlier runs.
+		wp( [ 'transient', 'delete', '--all' ] );
+	}
 
 	wp( [ 'stillpress', 'settings', 'set', 'public_url', STATIC ] );
 	wp( [ 'stillpress', 'settings', 'set', 'target', 'zip' ] );
 	wp( [ 'stillpress', 'settings', 'set', 'publish_mode', 'manual' ] );
 	wp( [ 'stillpress', 'settings', 'set', 'search', search ] );
+	wp( [ 'stillpress', 'settings', 'set', 'forms', forms ] );
 	wp( [ 'stillpress', 'clean', '--yes' ] );
 
 	// Visit pages once so plugins that generate files on first view (page builders) have done so.
