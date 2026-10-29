@@ -209,6 +209,13 @@ Built in by default (D20); Pagefind is an optional backend where a binary is sup
   the start of finalizing, a group at a time within the slice budget; a full build marks every group dirty once, which
   restores any file that went missing. The `search` setting (`builtin` or `off`) decides whether pages are indexed;
   `off` removes the files and empties the tables. Changing it triggers a full rebuild, like any settings change.
+- **Client** (`assets/js/search.js`, plain JavaScript, no build step): `Search\Frontend` enqueues it (deferred) only on
+  render requests, so the live site keeps WordPress search; its settings (index and stylesheet addresses, labels) are
+  printed as origin URLs and rewritten like everything else. It intercepts submits of any form with a field named `s`
+  and opens a `<dialog>`; a `?s=` address (where those forms land without JavaScript, since static hosts ignore the
+  query) opens it too. A query fetches `meta.json`, then the shards its words fall in (the word being typed also
+  matches longer terms, from at most 12 shards) and the document chunks of the top results. Every word must match;
+  scores are the stored term scores weighted by inverse document frequency. The stylesheet loads on first open.
 - **What is indexed**: `TextExtractor` reads the page with core's `WP_HTML_Tag_Processor`; nav, forms, scripts, media,
   hidden and screen-reader-only elements, and `data-stillpress-search-ignore` are skipped. The
   `stillpress_search_document` filter can change or drop (null) what a page contributes.

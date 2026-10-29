@@ -31,7 +31,8 @@ final class SearchIndexTest extends SystemTestCase {
 		}
 		$postings = $this->deployed_json( 'stillpress-search/terms/' . ShardKeys::file_name( $key ) )[ $term ] ?? array();
 		$paths    = array();
-		for ( $i = 0; $i < count( $postings ); $i += 2 ) {
+		$count    = count( $postings );
+		for ( $i = 0; $i < $count; $i += 2 ) {
 			$id      = $postings[ $i ];
 			$docs    = $this->deployed_json( 'stillpress-search/docs/' . intdiv( $id, $meta['chunk'] ) . '.json' );
 			$paths[] = $docs[ $id ][0];
@@ -73,6 +74,13 @@ final class SearchIndexTest extends SystemTestCase {
 
 		$meta = $this->deployed_json( 'stillpress-search/meta.json' );
 		$this->assertGreaterThan( 2, $meta['docs'], 'Posts, the home page and archives.' );
+
+		$html = (string) $this->page( '/lighthouse/' );
+		$this->assertStringContainsString( 'window.stillpressSearchSettings', $html );
+		$this->assertStringContainsString( wp_json_encode( self::PUBLIC_URL . '/stillpress-search/' ), $html, 'The index address is rewritten to the public site.' );
+		$this->assertStringNotContainsString( wp_json_encode( home_url( '/stillpress-search/' ) ), $html );
+		$this->assertFileExists( $this->target . '/wp-content/plugins/stillpress/assets/js/search.js' );
+		$this->assertFileExists( $this->target . '/wp-content/plugins/stillpress/assets/css/search.css', 'Found in the settings and copied, though only loaded on demand.' );
 	}
 
 	public function test_deleting_a_post_removes_it_from_search_incrementally(): void {
@@ -103,5 +111,6 @@ final class SearchIndexTest extends SystemTestCase {
 		);
 		$this->build( 'full' );
 		$this->assertFileDoesNotExist( $this->target . '/stillpress-search/meta.json' );
+		$this->assertStringNotContainsString( 'stillpressSearchSettings', (string) $this->page( '/' ) );
 	}
 }

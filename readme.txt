@@ -18,6 +18,7 @@ Stillpress turns your WordPress site into plain HTML, CSS and images that any we
 * **One choice to get started.** Activate, pick where the static site goes, and publish.
 * **Publishes where you host.** A folder on your server, a ZIP file, Amazon S3 or any S3-compatible storage (with CloudFront invalidation), another server over SFTP, a Git repository for GitHub Pages, GitLab Pages and similar hosts, Netlify, or Cloudflare. Each target is configured on the settings screen or from WP-CLI, and credentials are stored encrypted and never shown again.
 * **Publishes when you want.** Right after you save, at set times of day, or only when you click Publish. A full rebuild runs nightly (or weekly, or never) at a time you choose.
+* **Search keeps working.** Your search forms search the static copy in the visitor's browser, using an index published with the site. No server, no outside service.
 * **Feels like WordPress.** A "Publish to static" button in the editor, a status in the admin bar, a Site Health check, and a WP-CLI command for everything.
 * **No upsells.** There is no premium version, no license key and no tracking. The plugin contacts no outside service except the deploy target you choose.
 
@@ -55,15 +56,22 @@ Encrypted in the database, with a key derived from the security keys in wp-confi
 
 No. On a folder, SFTP server or S3 bucket it only deletes files it published there itself, and a folder must be empty or marked as its own first. A Git branch or Cloudflare Worker that already has content from elsewhere is refused unless you allow replacing it.
 
-= What about forms, comments and search? =
+= Does search work on the static site? =
 
-They need a server, so on the static copy they don't work yet. Static search and a form receiver are planned.
+Yes. Stillpress publishes a search index with your site, and your theme's search forms open a results window that searches it in the browser. Results include every published page (title and text from the page itself), and the index is updated along with the pages that change. You can turn it off under Settings → Search. Themes can choose what is searchable by marking elements with `data-stillpress-search`, or leave parts out with `data-stillpress-search-ignore`.
+
+= What about forms and comments? =
+
+They need a server, so on the static copy they don't work yet. A form receiver is planned.
 
 = Which pages are left out? =
 
 Drafts, private posts and password-protected posts are never published. You can leave out more addresses in Settings.
 
 == Changelog ==
+
+= 0.3.0 (in development) =
+* Static search: an index of every published page is built with the site and searched in the browser. Search forms and `?s=` links open a results window; only the index files a query needs are downloaded, and only the parts of the index that changed are redeployed.
 
 = 0.2.0 (in development) =
 * Remote deploy targets: Amazon S3 and S3-compatible storage with CloudFront invalidation, SFTP, Git over HTTPS (GitHub Pages, GitLab Pages and others), Netlify, and Cloudflare (Workers static assets). Large deploys resume across background runs.

@@ -31,6 +31,7 @@ npm run test:integration    # PHPUnit against the WordPress test suite (tests-cl
 npm run test:system         # Real builds over HTTP on the tests site (ERASES the :8889 site's content)
 npm run lint:php            # PHPCS: WordPress Coding Standards + PHPCompatibilityWP
 npm run lint:php:fix        # PHPCBF auto-fix
+npm run test:js             # Search client logic with Node's test runner (no WordPress needed)
 npm run test:e2e            # Playwright: live vs static screenshots, 3 themes (ERASES :8889; THEMES=block,classic,pagebuilder)
 npm run sftp:start          # Test-only SFTP server as sftp.test on the wp-env network (SftpTest skips without it)
 npm run git:start           # Test-only HTTPS Git server as git.test (GitTest skips without it)

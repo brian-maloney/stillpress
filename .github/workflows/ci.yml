@@ -50,6 +50,9 @@ jobs:
       - if: ${{ matrix.lint }}
         name: Runtime dependency licences are GPL-compatible
         run: npm run check:licenses
+      - if: ${{ matrix.lint }}
+        name: Search client (Node)
+        run: npm run test:js
       - name: Start the test SFTP and Git servers
         run: npm run sftp:start && npm run git:start
       - name: SFTP and Git tests must run, not skip

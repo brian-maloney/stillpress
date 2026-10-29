@@ -103,6 +103,7 @@ final class SettingsPage {
 		self::field( 'exclude', __( 'Leave out', 'stillpress' ), 'stillpress_content', array( self::class, 'field_exclude' ) );
 		self::field( 'redirects', __( 'Redirects', 'stillpress' ), 'stillpress_content', array( self::class, 'field_redirects' ) );
 		self::field( 'feeds', __( 'Feeds', 'stillpress' ), 'stillpress_content', array( self::class, 'field_feeds' ) );
+		self::field( 'search', __( 'Search', 'stillpress' ), 'stillpress_content', array( self::class, 'field_search' ) );
 		self::field( 'concurrency', __( 'Parallel requests', 'stillpress' ), 'stillpress_advanced', array( self::class, 'field_concurrency' ) );
 		self::field( 'connect_to', __( 'Loopback address', 'stillpress' ), 'stillpress_advanced', array( self::class, 'field_connect_to' ) );
 		self::field( 'max_urls', __( 'Address limit', 'stillpress' ), 'stillpress_advanced', array( self::class, 'field_max_urls' ) );
@@ -561,6 +562,24 @@ final class SettingsPage {
 			echo '<option value="' . esc_attr( $value ) . '"' . selected( (string) Settings::get( 'feeds' ), $value, false ) . '>' . esc_html( $label ) . '</option>';
 		}
 		echo '</select>';
+	}
+
+	/**
+	 * Search field.
+	 *
+	 * @return void
+	 */
+	public static function field_search(): void {
+		$options = array(
+			'builtin' => __( 'Search the static site in the browser', 'stillpress' ),
+			'off'     => __( 'Off', 'stillpress' ),
+		);
+		echo '<select id="stillpress-search" name="' . esc_attr( self::name( 'search' ) ) . '">';
+		foreach ( $options as $value => $label ) {
+			echo '<option value="' . esc_attr( $value ) . '"' . selected( (string) Settings::get( 'search' ), $value, false ) . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select>';
+		echo '<p class="description">' . esc_html__( 'Publishes an index of your pages with the site, so search forms work without a server. Changing this rebuilds the whole site.', 'stillpress' ) . '</p>';
 	}
 
 	/**

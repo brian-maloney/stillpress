@@ -227,6 +227,15 @@ Filters what the static search index stores for a page. Return null to leave the
 
 Since 0.3.0. Fired in `src/Search/PageIndexer.php`.
 
+### `stillpress_search_settings`
+
+Filters the settings of the static search client: index address, stylesheet address, result limit and
+labels. Return an empty "style" to style the dialog in the theme instead.
+
+- `array<string,mixed> $settings` Settings printed for assets/js/search.js.
+
+Since 0.3.0. Fired in `src/Search/Frontend.php`.
+
 ### `stillpress_settings`
 
 Filters the effective settings.

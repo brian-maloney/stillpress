@@ -267,5 +267,13 @@ The default is our own: PHP builds the index, a small bundled script (unminified
   dropped, and Han/Hiragana/Katakana runs indexed as overlapping pairs because those scripts don't separate words.
   Both implementations are tested against one shared table of examples (`tests/fixtures/search-tokenize.json`).
 
+- **Results in a dialog, not a results page.** A themed results page would need a template rendered for a query
+  that doesn't exist and a client that understands every theme's markup. A `<dialog>` with system colors and the
+  theme's font works on every theme, and the script is added only to pages rendered for the static copy, so the live
+  site keeps WordPress search. Forms without JavaScript land on `/?s=…`, which static hosts answer with the home page;
+  the script opens the dialog there too.
+- **Every word must match.** The word still being typed also matches longer terms. Scores are the stored per-page
+  scores times inverse document frequency; nothing is computed at publish time that a query could compute.
+
 No typo tolerance or stemming in the first version: both are language-specific, and the user can switch to Pagefind
 where it is available. Revisit if real sites show the table growing past what the cap intends.

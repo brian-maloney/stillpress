@@ -105,7 +105,7 @@ final class IndexWriterTest extends \WP_UnitTestCase {
 		$this->assertEqualsCanonicalizing( array( $hello, 1, $about, 1 ), $fast['fast'] );
 
 		$docs = $this->read( 'stillpress-search/docs/' . Index::chunk_of( $hello ) . '.json' );
-		$this->assertSame( array( '/hello/', 'Hello static', 'Hello static Static sites are fast.' ), $docs[ $hello ] );
+		$this->assertSame( array( '/hello/', 'Hello static', 'Static sites are fast.' ), $docs[ $hello ] );
 	}
 
 	public function test_an_edit_rewrites_only_the_files_it_touches(): void {

@@ -1,0 +1,93 @@
+/**
+ * Static search dialog. Loaded by search.js the first time the dialog opens. Inherits the theme's font and uses
+ * system colors, so it follows the page's light or dark scheme.
+ */
+.stillpress-search {
+	box-sizing: border-box;
+	width: min(42rem, calc(100vw - 2rem));
+	max-height: min(40rem, calc(100vh - 4rem));
+	margin: 2rem auto auto;
+	padding: 0;
+	border: 1px solid GrayText;
+	border-radius: 0.5rem;
+	background: Canvas;
+	color: CanvasText;
+	font: inherit;
+	overflow: auto;
+}
+
+.stillpress-search::backdrop {
+	background: rgb(0 0 0 / 0.4);
+}
+
+.stillpress-search__form {
+	position: sticky;
+	top: 0;
+	display: flex;
+	gap: 0.5rem;
+	padding: 1rem;
+	background: Canvas;
+	border-bottom: 1px solid GrayText;
+}
+
+.stillpress-search__input {
+	flex: 1;
+	min-width: 0;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid GrayText;
+	border-radius: 0.25rem;
+	background: Field;
+	color: FieldText;
+	font: inherit;
+}
+
+.stillpress-search__close {
+	padding: 0.5rem 0.75rem;
+	border: 1px solid GrayText;
+	border-radius: 0.25rem;
+	background: ButtonFace;
+	color: ButtonText;
+	font: inherit;
+	cursor: pointer;
+}
+
+.stillpress-search__status {
+	margin: 0;
+	padding: 0.75rem 1rem 0;
+	font-size: 0.875em;
+	opacity: 0.8;
+}
+
+.stillpress-search__status:empty {
+	display: none;
+}
+
+.stillpress-search__results {
+	margin: 0;
+	padding: 0.5rem 1rem 1rem;
+	list-style: none;
+}
+
+.stillpress-search__result {
+	padding: 0.75rem 0;
+	border-bottom: 1px solid color-mix(in srgb, GrayText 40%, transparent);
+}
+
+.stillpress-search__result:last-child {
+	border-bottom: 0;
+}
+
+.stillpress-search__result a {
+	color: LinkText;
+	font-weight: 600;
+}
+
+.stillpress-search__result p {
+	margin: 0.25rem 0 0;
+	font-size: 0.9em;
+}
+
+.stillpress-search mark {
+	background: Mark;
+	color: MarkText;
+}

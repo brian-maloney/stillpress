@@ -64,6 +64,7 @@ final class Plugin {
 
 		// First, so a render request is recognized before any other plugin code reads content.
 		Recorder::maybe_start();
+		Search\Frontend::register();
 
 		Capabilities::register();
 		Queue::register();

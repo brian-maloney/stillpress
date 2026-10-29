@@ -66,6 +66,7 @@ final class TextExtractor {
 		$description = '';
 		$heading     = '';
 		$in_heading  = false;
+		$after_title = 0;
 		$text        = '';
 
 		// Tag name of the region being read or the element being skipped, and how deep in same-named elements.
@@ -140,6 +141,10 @@ final class TextExtractor {
 			}
 
 			if ( 'H1' === $tag ) {
+				if ( $closer && $in_heading ) {
+					// The excerpt starts after the title, which results show already.
+					$after_title = strlen( $text );
+				}
 				$in_heading = ! $closer && '' === trim( $heading );
 			}
 			if ( ! in_array( $tag, self::INLINE, true ) ) {
@@ -147,10 +152,15 @@ final class TextExtractor {
 			}
 		}//end while
 
+		$body    = self::squash( (string) substr( $text, $after_title ) );
 		$text    = self::squash( $text );
 		$heading = self::squash( $heading );
 		$title   = '' !== $heading ? $heading : self::squash( $title );
-		$excerpt = '' !== trim( $description ) ? self::squash( $description ) : self::shorten( $text, self::EXCERPT_LENGTH );
+		if ( '' !== trim( $description ) ) {
+			$excerpt = self::squash( $description );
+		} else {
+			$excerpt = self::shorten( '' !== $body ? $body : $text, self::EXCERPT_LENGTH );
+		}
 
 		return array(
 			'title'   => self::shorten( $title, self::MAX_TITLE ),

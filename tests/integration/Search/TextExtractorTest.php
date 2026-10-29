@@ -34,7 +34,7 @@ HTML
 		);
 		$this->assertSame( 'Hello & welcome', $doc['title'] );
 		$this->assertSame( 'Hello & welcome First paragraph. Second one.', $doc['text'] );
-		$this->assertSame( $doc['text'], $doc['excerpt'] );
+		$this->assertSame( 'First paragraph. Second one.', $doc['excerpt'], 'The excerpt starts after the title.' );
 	}
 
 	public function test_reads_the_body_without_header_footer_and_aside_when_there_is_no_main(): void {
