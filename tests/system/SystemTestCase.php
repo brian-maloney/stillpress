@@ -85,9 +85,10 @@ abstract class SystemTestCase extends TestCase {
 		update_option( 'posts_per_page', 3 );
 		update_option( 'wp_attachment_pages_enabled', 0 );
 		update_option( 'sticky_posts', array() );
-		update_option( 'permalink_structure', '/%postname%/' );
-		update_option( 'category_base', '' );
-		update_option( 'tag_base', '' );
+		// Through WP_Rewrite, so the flush below builds rules for this structure rather than the one loaded at startup.
+		$GLOBALS['wp_rewrite']->set_permalink_structure( '/%postname%/' );
+		$GLOBALS['wp_rewrite']->set_category_base( '' );
+		$GLOBALS['wp_rewrite']->set_tag_base( '' );
 		flush_rewrite_rules();
 
 		foreach ( Schema::TABLES as $table ) {

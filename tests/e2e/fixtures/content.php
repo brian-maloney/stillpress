@@ -28,10 +28,12 @@ foreach ( array( 'category', 'post_tag', 'nav_menu' ) as $stillpress_tax ) {
 
 update_option( 'blogname', 'Stillpress Visual Test' );
 update_option( 'blogdescription', 'Static output must look like this' );
-update_option( 'permalink_structure', '/%postname%/' );
 update_option( 'show_on_front', 'posts' );
 update_option( 'posts_per_page', 4 );
 update_option( 'timezone_string', 'UTC' );
+// Through WP_Rewrite, not update_option(): the flush below builds rules from $wp_rewrite, which read the old
+// structure when this request started. A fresh site (date-based permalinks) would keep rules that 404 every post.
+$GLOBALS['wp_rewrite']->set_permalink_structure( '/%postname%/' );
 flush_rewrite_rules();
 
 /**
