@@ -52,3 +52,24 @@ have. The end-to-end tests run in Chromium only.
 The 404 page and redirect pages carry `data-pagefind-ignore="all"`, and elements marked
 `data-stillpress-search-ignore` are left out of both indexes; themes can limit the built-in index to elements marked
 `data-stillpress-search`.
+
+## Forms
+
+Forms on the static site post to a receiver (D22), chosen with the `forms` setting. Answers appear in the form (the
+client needs `fetch`, `FormData` and `HTMLFormElement.reportValidity()`, which every browser that runs the search client
+has); without JavaScript the form posts normally and a short page answers.
+
+| Receiver | Needs | Limits and behaviour | Tested |
+|---|---|---|---|
+| This site (`site`) | WordPress reachable from the internet at its own address (the static site at another address) | Rate limit in transients (5 per IP per 10 minutes); captcha checked here | integration, system tests, Playwright (Chromium, comments and Contact Form 7, with and without JavaScript) |
+| PHP file (`receiver`) | PHP 7.4+ on any host; curl or `allow_url_fopen` to forward; `mail()` to email | Rate limit in files in the temporary folder (or `data_dir`); never deploy it with the static site | unit tests, including requests through `php -S` on PHP 7.4 and 8.5 |
+| Cloudflare Worker (`receiver`) | A Worker; optional KV namespace bound as `STILLPRESS_RATE` | Without KV the rate limit counts per instance; forwards or sends to a webhook only (no email) | Node tests with the standard Request/Response API; not deployed live |
+| Netlify Function (`receiver`) | Functions in the site's repository (`netlify/functions/`) | Rate limit per instance; forwards or sends to a webhook only | Node tests; not deployed live |
+
+| Form | Adapter | Limits | Tested |
+|---|---|---|---|
+| Contact Form 7 | `WPCF7_ContactForm::submit()` | No file uploads; CF7's own captcha integrations aren't used (use the receiver's captcha) | Contact Form 7 6.2.4 (`npm run test:integration:forms`, Playwright) |
+| WPForms (Lite and paid) | `WPForms_Process::process()` | Its render-time and token anti-spam checks are bypassed (the receiver applies its own); no file uploads or payments; page and redirect confirmations send the visitor there | WPForms Lite 2.0.3 (`npm run test:integration:forms`) |
+| Gravity Forms | `GFAPI::submit_form()` | Single-page forms only; no file uploads | Only against a stand-in that follows the documented return value: Gravity Forms isn't on WordPress.org |
+| Comments | `wp_handle_comment_submission()` | Always anonymous; core's moderation, flood and duplicate checks apply; approved comments appear after the next publish | integration, Playwright |
+| Marked forms (`data-stillpress-form`) | Email to `forms_email` | Fields are listed as name: value | integration, system tests |

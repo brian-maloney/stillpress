@@ -18,6 +18,7 @@ Stillpress turns your WordPress site into plain HTML, CSS and images that any we
 * **One choice to get started.** Activate, pick where the static site goes, and publish.
 * **Publishes where you host.** A folder on your server, a ZIP file, Amazon S3 or any S3-compatible storage (with CloudFront invalidation), another server over SFTP, a Git repository for GitHub Pages, GitLab Pages and similar hosts, Netlify, or Cloudflare. Each target is configured on the settings screen or from WP-CLI, and credentials are stored encrypted and never shown again.
 * **Publishes when you want.** Right after you save, at set times of day, or only when you click Publish. A full rebuild runs nightly (or weekly, or never) at a time you choose.
+* **Forms keep working.** Contact Form 7, WPForms, Gravity Forms and comment forms on the static site send their submissions back to WordPress, where the form plugin handles them as usual. WordPress can receive them itself, or a small receiver you put on any PHP host, Cloudflare or Netlify can pass them on, so WordPress can stay private. Spam is held off with a hidden field, a minimum time on the page and a limit per visitor, plus an optional captcha.
 * **Search keeps working.** Your search forms search the static copy in the visitor's browser, using an index published with the site. No server, no outside service.
 * **Feels like WordPress.** A "Publish to static" button in the editor, a status in the admin bar, a Site Health check, and a WP-CLI command for everything.
 * **No upsells.** There is no premium version, no license key and no tracking. The plugin contacts no outside service except the deploy target you choose.
@@ -26,7 +27,7 @@ Links, images, srcset, stylesheets, scripts, structured data, feeds and sitemaps
 
 = For developers =
 
-Every stage has actions and filters (see `docs/HOOKS.md`), and deploy targets are pluggable through a small interface. All features are available from WP-CLI: `wp stillpress build`, `status`, `why`, `deploy`, `zip`, `settings`, `target`, `secret`, `schedule`, `doctor` and more.
+Every stage has actions and filters (see `docs/HOOKS.md`), and deploy targets are pluggable through a small interface. All features are available from WP-CLI: `wp stillpress build`, `status`, `why`, `deploy`, `zip`, `settings`, `target`, `secret`, `schedule`, `forms`, `doctor` and more.
 
 == Installation ==
 
@@ -64,15 +65,29 @@ Yes. Stillpress publishes a search index with your site, and your theme's search
 
 Yes, if you have it. Stillpress doesn't include Pagefind, because it is a separate program. To run it on your server, set `STILLPRESS_PAGEFIND_BINARY` in wp-config.php to the full path of the `pagefind` program and choose "Pagefind, run on this server" under Settings → Search. If your host builds the site (a GitHub Actions workflow on the Git target, Netlify or Cloudflare Pages), choose "Pagefind, run by your host's build step" and add `npx pagefind --site .` to that build. Either way your search forms keep the same results window. Themes can choose what is searchable by marking elements with `data-stillpress-search`, or leave parts out with `data-stillpress-search-ignore`.
 
-= What about forms and comments? =
+= Do forms and comments work on the static site? =
 
-They need a server, so on the static copy they don't work yet. A form receiver is planned.
+Yes, once you turn on Forms under Settings → Forms. A static host can't run them, so Stillpress points them at a receiver:
+
+* **This site**, if your WordPress site is reachable from the internet at its own address. Nothing else to install.
+* **A receiver you run elsewhere**, if WordPress is private. Download it from the settings screen (or `wp stillpress forms receiver php|cloudflare|netlify`): a single PHP file for any PHP host, a Cloudflare Worker or a Netlify Function. It checks each submission and forwards it to your site, signed with a secret you set on both sides. It can also send submissions to a webhook, or (the PHP file) by email, without WordPress.
+
+Contact Form 7, WPForms, Gravity Forms and the comment form are recognized automatically, and each submission is handled by that plugin as if it had been sent on your site: its validation, emails and stored entries work as usual. Other forms work if your theme marks them with `data-stillpress-form="name"`; their submissions are emailed to you. File uploads aren't supported.
+
+= How are forms protected from spam? =
+
+Every form gets a hidden field that people don't see and bots fill in, the time the page was open is checked (bots are quicker than people), each visitor can send five forms in ten minutes, and submissions must come from your static site. For more protection choose Cloudflare Turnstile or hCaptcha; these are outside services, so they are off unless you pick one.
 
 = Which pages are left out? =
 
 Drafts, private posts and password-protected posts are never published. You can leave out more addresses in Settings.
 
 == Changelog ==
+
+= 0.4.0 (in development) =
+* Forms on the static site: Contact Form 7, WPForms, Gravity Forms, comments and forms marked with `data-stillpress-form` post to a receiver, and WordPress hands each submission to the form plugin. Answers and field errors appear in the form; without JavaScript a short page answers.
+* Receivers: this WordPress site, or a standalone PHP file, Cloudflare Worker or Netlify Function that forwards signed submissions to WordPress (or to a webhook, or by email).
+* Spam protection: honeypot, minimum time on the page, per-visitor rate limit, origin check, and optional Cloudflare Turnstile or hCaptcha. A signed webhook can get a copy of every submission.
 
 = 0.3.0 (in development) =
 * Static search: an index of every published page is built with the site and searched in the browser. Search forms and `?s=` links open a results window; only the index files a query needs are downloaded, and only the parts of the index that changed are redeployed.
@@ -90,9 +105,16 @@ Drafts, private posts and password-protected posts are never published. You can 
 
 == Privacy ==
 
-The plugin doesn't collect, store or transmit personal data. It contacts no outside service on its own: the only remote
+The plugin doesn't collect or store personal data of its own. It contacts no outside service on its own: the only remote
 requests go to deploy targets you configure (Amazon S3 or another S3-compatible service, CloudFront, an SFTP
 server, a Git repository, Netlify, or Cloudflare), and they carry your built site and the credentials you entered for that target.
+
+When you turn on Forms, what visitors type into forms on the static site, with their IP address and browser name, is sent
+to the receiver you chose and handed to the form plugin, which may email or store it as it does on your site. Stillpress
+itself keeps only a hashed IP address for ten minutes, for its rate limit. If you set up a webhook, a copy of each
+submission goes there. If you choose a captcha, visitors' browsers load it from Cloudflare (Turnstile) or hCaptcha on
+pages with forms, and each answer is checked with that provider along with the visitor's IP address. Mention these in
+your site's privacy policy.
 
 == Third-party libraries ==
 

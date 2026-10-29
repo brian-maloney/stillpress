@@ -138,4 +138,42 @@ final class FormsSettingsTest extends WP_UnitTestCase {
 		Settings::update( array( 'forms' => 'receiver' ) );
 		$this->assertFalse( ( new Config() )->enabled(), 'receiver mode without an address' );
 	}
+
+	public function test_privacy_policy_text_while_forms_are_on(): void {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		require_once ABSPATH . 'wp-admin/includes/class-wp-privacy-policy-content.php';
+		$texts = static function (): string {
+			$property = new \ReflectionProperty( \WP_Privacy_Policy_Content::class, 'policy_content' );
+			$property->setAccessible( true );
+			$content = (array) $property->getValue();
+			$property->setValue( null, array() );
+			return (string) wp_json_encode( $content );
+		};
+		// wp_add_privacy_policy_content() only accepts text in the admin, during admin_init.
+		set_current_screen( 'dashboard' );
+		$run = static function () {
+			global $wp_filter;
+			$saved = $wp_filter['admin_init'] ?? null;
+			unset( $wp_filter['admin_init'] );
+			add_action( 'admin_init', array( \Stillpress\Admin\Admin::class, 'privacy_policy' ) );
+			do_action( 'admin_init' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core hook.
+			$wp_filter['admin_init'] = $saved; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restores what was there.
+		};
+		$texts();
+		$run();
+		$this->assertStringNotContainsString( 'form receiver', $texts(), 'nothing while forms are off' );
+
+		Settings::update(
+			array(
+				'forms'                  => 'site',
+				'forms_captcha'          => 'hcaptcha',
+				'forms_captcha_site_key' => 'key',
+			)
+		);
+		$run();
+		$text = $texts();
+		set_current_screen( 'front' );
+		$this->assertStringContainsString( 'form receiver', $text );
+		$this->assertStringContainsString( 'hCaptcha', $text );
+	}
 }
